@@ -12,34 +12,60 @@ Kies daarna gewoon de virtuele camera als bron in OBS, Zoom, Teams, Google Meet,
 
 ## Installatie
 
-Python 3.10 of nieuwer.
+### Linux (Ubuntu, Debian, Mint, Fedora, Arch) – automatisch
+
+Eenmalig in een terminal, vanuit de map van deze repository:
 
 ```bash
-git clone <deze-repo>
+git clone https://github.com/picazuid-pilot/face-anonymizer.git
 cd face-anonymizer
+./install.sh
+```
+
+Het script:
+
+1. installeert Python, Tk en de virtuele-camera-driver (*v4l2loopback*);
+2. zet de app met een eigen Python-omgeving in `~/.local/share/face-anonymizer`;
+3. downloadt het gezichtsmodel vooraf;
+4. stelt de virtuele camera **"Face Anonymizer"** zo in dat hij na elke herstart beschikbaar is;
+5. maakt een snelkoppeling in het **app-menu** en op het **bureaublad**.
+
+Daarna start je Face Anonymizer gewoon via het app-menu of het bureaublad; een terminal is niet meer nodig. Gaat er iets mis bij het starten, dan krijg je een venster met de foutmelding (het volledige logboek staat in `~/.cache/face-anonymizer/`).
+
+| | |
+|---|---|
+| Bijwerken | `git pull && ./install.sh` |
+| Verwijderen | `./uninstall.sh` |
+| Zonder vragen | `./install.sh --yes` |
+| Zonder virtuele camera | `./install.sh --no-virtualcam` |
+
+**Secure Boot:** staat Secure Boot aan, dan vraagt Ubuntu bij het installeren van de driver om een wachtwoord. Na de herstart verschijnt een blauw scherm: kies *Enroll MOK* en voer dat wachtwoord in. Daarna werkt de virtuele camera.
+
+### Windows en macOS – handmatig
+
+Python 3.10 of nieuwer en [OBS Studio](https://obsproject.com/) (alleen voor de driver van de virtuele camera; OBS hoeft niet open te staan).
+
+```bash
 pip install -r requirements.txt
 python face_anonymizer.py
 ```
 
-Het YuNet-model (±230 KB) wordt bij de eerste start automatisch gedownload naar `~/.cache/yunet/`.
+Op macOS moet je de virtuele camera één keer in OBS starten om hem te registreren. Op Windows zet je de virtuele camera in OBS zelf **niet** aan; deze tool gebruikt hem.
 
-### Virtuele camera per besturingssysteem
+### Heb ik OBS nodig?
 
-| Systeem | Wat je nodig hebt |
-|---|---|
-| Windows | [OBS Studio](https://obsproject.com/) geïnstalleerd (levert de driver “OBS Virtual Camera”). Zet de virtuele camera in OBS zelf **niet** aan, deze tool gebruikt hem. |
-| macOS | OBS Studio geïnstalleerd en de virtuele camera één keer in OBS gestart (registreert het systeemprogramma). |
-| Linux | `sudo apt install v4l2loopback-dkms` en daarna `sudo modprobe v4l2loopback devices=1 exclusive_caps=1 card_label="Face Anonymizer"` |
-
-Op Linux heb je voor de GUI ook `python3-tk` nodig.
+Nee, niet om naar Zoom, Meet of Teams te gaan. De virtuele camera verschijnt in die apps als een gewone webcam met de naam **"Face Anonymizer"**. Op Linux levert *v4l2loopback* die camera; op Windows en macOS moet OBS geïnstalleerd zijn voor de driver. OBS gebruik je alleen als je zelf een livestream opbouwt; daar kies je de virtuele camera dan als *Video-opnameapparaat*.
 
 ## Gebruik
 
 1. Kies het cameranummer (meestal `0`) en druk op **▶ Start**.
 2. Vink **Enable Virtual Camera** aan. Je kunt dit ook tijdens het streamen aan- en uitzetten.
-3. Kies in je stream- of vergaderapp de virtuele camera als webcam.
+3. Kies in Zoom, Meet, Teams of OBS de camera **"Face Anonymizer"**.
+   Op Linux toont Chrome/Meet de camera pas als er beeld op staat: start dus eerst deze tool en vink de virtuele camera aan, en open of herlaad daarna Meet.
 4. Zet **Show debug boxes** gerust aan om te tunen: de kaders komen niet in de stream terecht.
 5. Sluit je het previewvenster, dan loopt de stream gewoon door en bespaar je rekenkracht.
+
+Gebruik je de virtuele camera in de browser, zet dan de browserextensie uit; anders wordt het beeld twee keer bewerkt.
 
 Standaard wordt `assets/overlay.png` als overlay geladen. Met **📁 Select PNG** kies je een andere. Transparante PNG’s werken het best; zorg dat het deel dat over het gezicht valt volledig dekkend is.
 
@@ -74,13 +100,13 @@ De tests draaien zonder camera of scherm.
 
 ## Browserextensie (Chrome/Edge)
 
-In [`browser-extension/`](browser-extension/) staat een extensie die in webapps (Google Meet, Zoom in de browser, Teams web, StreamYard, YouTube Studio) je webcambeeld vervangt door een geanonimiseerde versie. Zet hem aan en kies je gewone camera; meer is niet nodig. Hij gebruikt hetzelfde YuNet-model en dezelfde tracking als deze Python-tool.
+In [`browser-extension/`](browser-extension/) staat een extensie (installatie: zie de [README](browser-extension/README.md); na `install.sh` staat hij ook klaar in `~/.local/share/face-anonymizer/browser-extension`) die in webapps (Google Meet, Zoom in de browser, Teams web, StreamYard, YouTube Studio) je webcambeeld vervangt door een geanonimiseerde versie. Zet hem aan en kies je gewone camera; meer is niet nodig. Hij gebruikt hetzelfde YuNet-model en dezelfde tracking als deze Python-tool.
 
 | | Python-tool | Browserextensie |
 |---|---|---|
 | OBS, Zoom/Teams desktop-app | ✅ via virtuele camera | ❌ |
 | Meet, Zoom/Teams in de browser, YouTube Studio | ✅ via virtuele camera | ✅ direct |
-| Installatie | Python + OBS | Extensie laden |
+| Installatie | `install.sh` (Linux) of Python + OBS (Windows/macOS) | Extensie laden |
 | Kleine gezichten ver weg | Beter (volle resolutie) | Detectie op 320–640 px |
 
 ## Roadmap

@@ -594,7 +594,7 @@ class ControlsWindow:
         self.create_video_window()
 
     def create_video_window(self):
-        self.video_window = tk.Toplevel(self.root)
+        self.video_window = tk.Toplevel(self.root, class_="Face-anonymizer")
         self.video_window.title("Face Anonymizer - Video Preview")
         self.video_window.geometry("1280x720")
         self.video_window.minsize(640, 360)
@@ -749,7 +749,14 @@ class ControlsWindow:
 
 
 def main():
-    root = tk.Tk()
+    # className koppelt het venster aan de snelkoppeling (StartupWMClass) in het dock
+    root = tk.Tk(className="face-anonymizer")
+    icon = APP_DIR / "assets" / "icon.png"
+    if icon.exists():
+        try:
+            root.iconphoto(True, tk.PhotoImage(file=str(icon)))
+        except tk.TclError:
+            pass
     controls = ControlsWindow(root, AnonymizerWorker())
     root.protocol("WM_DELETE_WINDOW", controls.on_closing)
     root.mainloop()

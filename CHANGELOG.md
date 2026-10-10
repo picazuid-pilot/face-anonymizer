@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.1.0
+- `install.sh` voor Linux: installeert alles in één keer, inclusief virtuele camera die na een herstart beschikbaar blijft
+- Snelkoppeling in het app-menu en op het bureaublad; starten zonder terminal
+- Foutmelding in een venster als de app niet start; logboek in `~/.cache/face-anonymizer/`
+- Kan niet per ongeluk twee keer tegelijk starten (de camera is maar door één programma te gebruiken)
+- `uninstall.sh` om alles weer te verwijderen
+- App-icoon; beide vensters vallen onder één icoon in het dock
+
 ## Browserextensie 1.1.0
 - **Sneller**: het model draait nu op het echte beeldformaat (bijv. 480×288) in plaats van een opgevuld vierkant van 640×640. Detectie gaat daardoor ongeveer 3× zo snel.
 - **Keuze voor snelheid** in de popup: Snel / Normaal / Nauwkeurig
