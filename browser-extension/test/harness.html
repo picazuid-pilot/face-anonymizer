@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <title>Face Anonymizer testpagina</title>
+  <style>
+    body { font: 14px system-ui, sans-serif; margin: 16px; background: #111; color: #eee; }
+    video { width: 640px; max-width: 100%; background: #000; display: block; margin-top: 8px; }
+    button { font: inherit; margin-right: 6px; }
+  </style>
+  <!-- Zelfde volgorde als in de extensie: inject.js draait vóór de website -->
+  <script src="../src/inject.js"></script>
+</head>
+<body>
+  <h1>Face Anonymizer testpagina</h1>
+  <p>Test de camerapijplijn zonder de extensie te installeren. Start vanuit de map
+    <code>browser-extension</code> een lokale server (<code>python -m http.server 8123</code>)
+    en open <code>http://localhost:8123/test/harness.html</code>.</p>
+  <button id="start">Camera starten</button>
+  <button data-mode="overlay">Overlay</button>
+  <button data-mode="pixelate">Pixels</button>
+  <button data-mode="blur">Blur</button>
+  <button data-mode="black">Zwart</button>
+  <video id="v" autoplay playsinline muted></video>
+
+  <script>
+    // Nabootsing van bridge.js (in de extensie komt dit uit chrome.storage)
+    const settings = {
+      enabled: true, mode: 'overlay', scale: 1.8, confidence: 0.6, minSize: 20,
+      persistence: 20, smartPersistence: true, failSafeBlur: true,
+    };
+    const channel = new MessageChannel();
+    window.faSetSettings = (patch) => {
+      Object.assign(settings, patch);
+      channel.port1.postMessage({ type: 'settings', settings: { ...settings } });
+    };
+    (async () => {
+      const overlay = await (await fetch('../assets/overlay.png')).blob();
+      window.postMessage({
+        __faInit: true,
+        detectorUrl: new URL('../detector.html', location.href).href,
+        settings: { ...settings },
+        overlay,
+      }, '*', [channel.port2]);
+    })();
+
+    window.faStart = async () => {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 }, audio: false });
+      document.getElementById('v').srcObject = stream;
+      window.faStream = stream;
+      return stream.getVideoTracks()[0].getSettings();
+    };
+
+    // Huidig beeld van de (geanonimiseerde) video als RGBA-array
+    window.faGrab = () => {
+      const v = document.getElementById('v');
+      const c = new OffscreenCanvas(v.videoWidth, v.videoHeight);
+      const ctx = c.getContext('2d');
+      ctx.drawImage(v, 0, 0);
+      return { w: c.width, h: c.height, data: Array.from(ctx.getImageData(0, 0, c.width, c.height).data) };
+    };
+
+    document.getElementById('start').onclick = () => window.faStart();
+    for (const b of document.querySelectorAll('[data-mode]')) {
+      b.onclick = () => window.faSetSettings({ mode: b.dataset.mode });
+    }
+  </script>
+</body>
+</html>

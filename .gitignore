@@ -7,3 +7,4 @@ venv/
 *.part
 .DS_Store
 Thumbs.db
+!browser-extension/models/*.onnx

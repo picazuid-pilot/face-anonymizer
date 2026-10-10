@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <title>Face Anonymizer</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <img src="icons/icon48.png" alt="" width="28" height="28">
+    <h1>Face Anonymizer</h1>
+    <label class="switch" title="Aan/uit">
+      <input type="checkbox" id="enabled">
+      <span></span>
+    </label>
+  </header>
+
+  <p class="hint" id="state"></p>
+
+  <section>
+    <h2>Anonimisering</h2>
+    <div class="modes" role="radiogroup" aria-label="Modus">
+      <label><input type="radio" name="mode" value="overlay"><span>Overlay</span></label>
+      <label><input type="radio" name="mode" value="pixelate"><span>Pixels</span></label>
+      <label><input type="radio" name="mode" value="blur"><span>Blur</span></label>
+      <label><input type="radio" name="mode" value="black"><span>Zwart</span></label>
+    </div>
+
+    <div class="overlay-row" id="overlayRow">
+      <img id="overlayPreview" alt="Huidige overlay">
+      <div>
+        <button type="button" id="pickOverlay">Eigen PNG kiezen…</button>
+        <button type="button" id="resetOverlay" class="link">Standaard herstellen</button>
+        <input type="file" id="overlayFile" accept="image/png,image/webp,image/jpeg" hidden>
+      </div>
+    </div>
+
+    <label class="slider">
+      <span>Maskergrootte</span>
+      <input type="range" id="scale" min="1" max="3.5" step="0.1">
+      <output for="scale" id="scaleOut"></output>
+    </label>
+  </section>
+
+  <section>
+    <h2>Detectie</h2>
+    <label class="slider">
+      <span>Zekerheid</span>
+      <input type="range" id="confidence" min="0.3" max="0.95" step="0.05">
+      <output id="confidenceOut"></output>
+    </label>
+    <label class="slider">
+      <span>Min. grootte</span>
+      <input type="range" id="minSize" min="10" max="100" step="1">
+      <output id="minSizeOut"></output>
+    </label>
+    <label class="slider">
+      <span>Vasthouden</span>
+      <input type="range" id="persistence" min="3" max="60" step="1">
+      <output id="persistenceOut"></output>
+    </label>
+    <label class="check">
+      <input type="checkbox" id="smartPersistence">
+      <span>Slim vasthouden <small>losse valse detecties verdwijnen snel</small></span>
+    </label>
+    <label class="check">
+      <input type="checkbox" id="failSafeBlur">
+      <span>Veiligheidsvervaging <small>heel beeld wazig zolang de detector niet werkt</small></span>
+    </label>
+  </section>
+
+  <footer>Wijzigingen gelden direct. Werkt in webapps zoals Meet, Zoom (browser), Teams (web) en YouTube Studio. Herlaad de pagina als de camera al aan stond vóór je de extensie installeerde.</footer>
+
+  <script src="src/settings.js"></script>
+  <script src="src/popup.js"></script>
+</body>
+</html>

@@ -72,12 +72,20 @@ python -m pytest tests/
 
 De tests draaien zonder camera of scherm.
 
-## Roadmap: webversie
+## Browserextensie (Chrome/Edge)
 
-Onderzocht, nog niet gebouwd:
+In [`browser-extension/`](browser-extension/) staat een extensie die in webapps (Google Meet, Zoom in de browser, Teams web, StreamYard, YouTube Studio) je webcambeeld vervangt door een geanonimiseerde versie. Zet hem aan en kies je gewone camera; meer is niet nodig. Hij gebruikt hetzelfde YuNet-model en dezelfde tracking als deze Python-tool.
 
-- **Webpagina** die de webcam in de browser anonimiseert (detectie in de browser, niets naar een server). Bruikbaar als *Venster-opname* of *Browserbron* in OBS.
-- **Browserextensie** die in webapps (Google Meet, Zoom in de browser, Teams web, StreamYard, YouTube Studio) de webcam vervangt door het geanonimiseerde beeld. Werkt niet in de desktop-apps van Zoom/Teams; daarvoor blijft deze Python-tool met virtuele camera nodig.
+| | Python-tool | Browserextensie |
+|---|---|---|
+| OBS, Zoom/Teams desktop-app | ✅ via virtuele camera | ❌ |
+| Meet, Zoom/Teams in de browser, YouTube Studio | ✅ via virtuele camera | ✅ direct |
+| Installatie | Python + OBS | Extensie laden |
+| Kleine gezichten ver weg | Beter (volle resolutie) | Detectie op 640 px |
+
+## Roadmap
+
+- **Webpagina** die de webcam in de browser anonimiseert, als *Browserbron* of *Venster-opname* in OBS.
 
 ## Overlay-logo
 

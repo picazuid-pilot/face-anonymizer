@@ -1,5 +1,12 @@
 # Changelog
 
+## Browserextensie 1.0.0
+- Chrome/Edge-extensie die de webcam in webapps vervangt door een geanonimiseerd beeld
+- YuNet via ONNX Runtime Web; decodering geverifieerd tegen OpenCV
+- Overlay, pixels, blur, zwart; eigen PNG via de popup; instellingen gelden live
+- Fail-safe: heel beeld vervaagd zolang de detector niet klaar is of niet reageert
+- Detector herstelt automatisch als een website de verborgen frame verwijdert
+
 ## 2.0.0
 
 ### Opgelost
