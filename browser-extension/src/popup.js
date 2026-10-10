@@ -22,6 +22,7 @@
     $('state').classList.toggle('off', !on);
     const mode = document.querySelector('input[name=mode]:checked')?.value;
     $('overlayRow').classList.toggle('hidden', mode !== 'overlay');
+    $('mirrorRow').classList.toggle('hidden', mode !== 'overlay');
   }
 
   // Aan/uit
@@ -33,6 +34,18 @@
     r.checked = r.value === s.mode;
     r.addEventListener('change', () => { save({ mode: r.value }); renderState(); });
   }
+
+  // Detectiesnelheid
+  const SPEED_HINT = {
+    320: 'Snelst. Goed voor één persoon dicht bij de camera.',
+    480: 'Aanbevolen balans tussen snelheid en kleine gezichten.',
+    640: 'Vindt kleinere gezichten verder weg, maar volgt beweging trager.',
+  };
+  for (const r of document.querySelectorAll('input[name=detectSize]')) {
+    r.checked = Number(r.value) === s.detectSize;
+    r.addEventListener('change', () => { save({ detectSize: Number(r.value) }); $('speedHint').textContent = SPEED_HINT[r.value]; });
+  }
+  $('speedHint').textContent = SPEED_HINT[s.detectSize] || '';
 
   // Schuifregelaars
   for (const key of Object.keys(FORMAT)) {
@@ -46,7 +59,7 @@
   }
 
   // Vinkjes
-  for (const key of ['smartPersistence', 'failSafeBlur']) {
+  for (const key of ['smartPersistence', 'failSafeBlur', 'mirrorOverlay']) {
     $(key).checked = s[key];
     $(key).addEventListener('change', (e) => save({ [key]: e.target.checked }));
   }

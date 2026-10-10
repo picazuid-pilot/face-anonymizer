@@ -1,15 +1,24 @@
 /*
  * YuNet (face_detection_yunet_2023mar) pre- en postprocessing.
  * Identiek aan OpenCV's cv::FaceDetectorYN, geverifieerd tegen de Python-tool.
+ * Het meegeleverde model accepteert elke invoergrootte die een veelvoud van 32 is
+ * (zoals OpenCV's setInputSize), zodat een 16:9-beeld niet tot een vierkant
+ * opgevuld hoeft te worden.
  * Werkt in de browser (globalThis.YuNet) en in Node (module.exports).
  */
 (function (root) {
-  const SIZE = 640;            // het model heeft een vaste invoer van 640x640
   const STRIDES = [8, 16, 32];
 
-  /** RGBA-pixels (SIZE x SIZE) -> Float32Array in BGR, 0-255, NCHW. */
-  function toTensor(rgba) {
-    const n = SIZE * SIZE;
+  /** Invoergrootte (veelvoud van 32) voor een beeld van w x h bij een gewenste lange zijde. */
+  function inputSize(w, h, longSide) {
+    const s = longSide / Math.max(w, h);
+    const cw = Math.max(1, Math.round(w * s)), ch = Math.max(1, Math.round(h * s));
+    return { scale: s, cw, ch, W: Math.ceil(cw / 32) * 32, H: Math.ceil(ch / 32) * 32 };
+  }
+
+  /** RGBA-pixels (W x H) -> Float32Array in BGR, 0-255, NCHW. */
+  function toTensor(rgba, W, H) {
+    const n = W * H;
     const data = new Float32Array(3 * n);
     for (let i = 0, p = 0; i < n; i++, p += 4) {
       data[i] = rgba[p + 2];          // B
@@ -30,12 +39,12 @@
 
   /**
    * outputs: object met cls_8.., obj_8.., bbox_8.. (Float32Array's)
-   * Geeft [[x, y, w, h, score], ...] in 640x640-coördinaten, na NMS.
+   * Geeft [[x, y, w, h, score], ...] in invoercoördinaten, na NMS.
    */
-  function decode(outputs, scoreThreshold = 0.3, nmsThreshold = 0.3) {
+  function decode(outputs, W, H, scoreThreshold = 0.3, nmsThreshold = 0.3) {
     const cands = [];
     for (const s of STRIDES) {
-      const cols = SIZE / s;
+      const cols = W / s;
       const cls = outputs['cls_' + s], obj = outputs['obj_' + s], bb = outputs['bbox_' + s];
       for (let i = 0; i < cls.length; i++) {
         const c = Math.min(Math.max(cls[i], 0), 1);
@@ -56,7 +65,7 @@
     return keep;
   }
 
-  const api = { SIZE, toTensor, decode, iou };
+  const api = { inputSize, toTensor, decode, iou };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.YuNet = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

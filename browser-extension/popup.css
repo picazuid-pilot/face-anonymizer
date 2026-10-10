@@ -53,3 +53,6 @@ output { text-align: right; font-variant-numeric: tabular-nums; color: var(--mut
 .check input { accent-color: var(--accent); margin-top: 2px; }
 .check small { display: block; color: var(--muted); }
 footer { margin-top: 10px; color: var(--muted); font-size: 11px; }
+.modes.three { grid-template-columns: repeat(3, 1fr); }
+#speedHint { margin: 6px 0 0; }
+#mirrorRow.hidden { display: none; }

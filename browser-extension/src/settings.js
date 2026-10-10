@@ -9,4 +9,6 @@ const FA_DEFAULTS = {
   persistence: 20,          // detecties dat een masker blijft staan na verlies
   smartPersistence: true,   // onbevestigde detecties verdwijnen snel
   failSafeBlur: true,       // heel beeld vervagen zolang de detector niet klaar is
+  detectSize: 480,          // lange zijde van het detectiebeeld: 320 snel, 480 normaal, 640 nauwkeurig
+  mirrorOverlay: false,     // overlay spiegelen (alleen nuttig voor je eigen gespiegelde voorbeeld)
 };

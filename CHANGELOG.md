@@ -1,5 +1,12 @@
 # Changelog
 
+## Browserextensie 1.1.0
+- **Sneller**: het model draait nu op het echte beeldformaat (bijv. 480×288) in plaats van een opgevuld vierkant van 640×640. Detectie gaat daardoor ongeveer 3× zo snel.
+- **Keuze voor snelheid** in de popup: Snel / Normaal / Nauwkeurig
+- **Masker beweegt mee**: tussen twee detecties wordt de positie voorspeld uit je bewegingsrichting, en het masker wordt iets groter bij snelle bewegingen
+- **Geen spookmaskers meer** bij snelle bewegingen: gezichten worden ook op afstand gekoppeld en dubbele maskers worden opgeruimd
+- **Overlay spiegelen** als optie
+
 ## Browserextensie 1.0.0
 - Chrome/Edge-extensie die de webcam in webapps vervangt door een geanonimiseerd beeld
 - YuNet via ONNX Runtime Web; decodering geverifieerd tegen OpenCV

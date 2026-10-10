@@ -34,6 +34,10 @@
         <input type="file" id="overlayFile" accept="image/png,image/webp,image/jpeg" hidden>
       </div>
     </div>
+    <label class="check" id="mirrorRow">
+      <input type="checkbox" id="mirrorOverlay">
+      <span>Overlay spiegelen <small>Meet spiegelt alleen je eigen voorbeeld; anderen zien het logo goed. Zet dit alleen aan als je zelf ook gespiegeld uitzendt.</small></span>
+    </label>
 
     <label class="slider">
       <span>Maskergrootte</span>
@@ -44,6 +48,12 @@
 
   <section>
     <h2>Detectie</h2>
+    <div class="modes three" role="radiogroup" aria-label="Snelheid">
+      <label><input type="radio" name="detectSize" value="320"><span>Snel</span></label>
+      <label><input type="radio" name="detectSize" value="480"><span>Normaal</span></label>
+      <label><input type="radio" name="detectSize" value="640"><span>Nauwkeurig</span></label>
+    </div>
+    <p class="hint" id="speedHint"></p>
     <label class="slider">
       <span>Zekerheid</span>
       <input type="range" id="confidence" min="0.3" max="0.95" step="0.05">

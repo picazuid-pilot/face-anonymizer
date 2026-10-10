@@ -27,7 +27,7 @@
     // Nabootsing van bridge.js (in de extensie komt dit uit chrome.storage)
     const settings = {
       enabled: true, mode: 'overlay', scale: 1.8, confidence: 0.6, minSize: 20,
-      persistence: 20, smartPersistence: true, failSafeBlur: true,
+      persistence: 20, smartPersistence: true, failSafeBlur: true, detectSize: 480, mirrorOverlay: false,
     };
     const channel = new MessageChannel();
     window.faSetSettings = (patch) => {

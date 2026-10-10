@@ -81,7 +81,7 @@ In [`browser-extension/`](browser-extension/) staat een extensie die in webapps 
 | OBS, Zoom/Teams desktop-app | ✅ via virtuele camera | ❌ |
 | Meet, Zoom/Teams in de browser, YouTube Studio | ✅ via virtuele camera | ✅ direct |
 | Installatie | Python + OBS | Extensie laden |
-| Kleine gezichten ver weg | Beter (volle resolutie) | Detectie op 640 px |
+| Kleine gezichten ver weg | Beter (volle resolutie) | Detectie op 320–640 px |
 
 ## Roadmap
 

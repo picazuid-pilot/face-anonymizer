@@ -45,11 +45,13 @@ camera ──► extensie (in de pagina) ──► gezichten afgedekt ──► 
 | Min. grootte | Kleinste gezicht in pixels |
 | Vasthouden | Hoeveel detecties een masker blijft staan nadat een gezicht kwijt is |
 | Slim vasthouden | Losse valse detecties verdwijnen na 5 detecties, gevolgde gezichten blijven |
+| Snel / Normaal / Nauwkeurig | Grootte van het beeld waarop gezichten gezocht worden (320, 480 of 640 px). Sneller volgt beweging beter, nauwkeuriger vindt kleinere gezichten |
+| Overlay spiegelen | Spiegelt het logo. Meet, Zoom en Teams spiegelen alleen je **eigen** voorbeeld; de anderen zien het logo gewoon goed. Gebruik dit dus alleen als je zelf ook gespiegeld uitzendt, of zet in Meet bij Video het spiegelen van je eigen beeld uit |
 
 ## Beperkingen
 
 - Alleen voor **webapps in de browser**. De desktop-apps van Zoom, Teams, OBS enz. gebruiken de camera buiten de browser om; gebruik daarvoor de Python-tool met virtuele camera (zie de hoofdmap).
-- Gezichten worden gezocht op een 640 px brede versie van het beeld. Heel kleine gezichten ver weg (groot publiek) vindt de Python-tool op volle resolutie beter.
+- Gezichten worden gezocht op een verkleinde versie van het beeld (standaard 480 px). Heel kleine gezichten ver weg (groot publiek) vindt de Python-tool op volle resolutie beter.
 - Geen enkele detector is perfect. Test vooraf met je eigen camera en licht.
 
 ## Testen zonder te installeren

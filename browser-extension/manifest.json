@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Face Anonymizer",
   "short_name": "Face Anonymizer",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Anonimiseert gezichten in je webcambeeld voor Google Meet, Zoom (browser), Teams (web), YouTube Studio en andere webapps.",
   "permissions": [
     "storage"

@@ -90,14 +90,14 @@
     async detect(frame, w, h) {
       this.ensure();
       if (!this.ready) { frame.close(); throw new Error('not ready'); }
-      const s = 640 / Math.max(w, h); // letterbox naar 640x640
+      // Lange zijde naar de gekozen detectiegrootte; opvullen tot een veelvoud van 32
+      // (zoals OpenCV) in plaats van tot een vierkant: scheelt bij 16:9 bijna de helft.
+      const s = (settings.detectSize || 480) / Math.max(w, h);
+      const cw = Math.max(1, Math.round(w * s)), ch = Math.max(1, Math.round(h * s));
+      const W = Math.ceil(cw / 32) * 32, H = Math.ceil(ch / 32) * 32;
       let bitmap;
       try {
-        bitmap = await createImageBitmap(frame, {
-          resizeWidth: Math.max(1, Math.round(w * s)),
-          resizeHeight: Math.max(1, Math.round(h * s)),
-          resizeQuality: 'medium',
-        });
+        bitmap = await createImageBitmap(frame, { resizeWidth: cw, resizeHeight: ch, resizeQuality: 'medium' });
       } finally {
         frame.close();
       }
@@ -108,7 +108,7 @@
           if (this.pending.delete(id)) reject(new Error('timeout'));
         }, 1500);
       });
-      this.port.postMessage({ type: 'detect', id, bitmap }, [bitmap]);
+      this.port.postMessage({ type: 'detect', id, bitmap, W, H }, [bitmap]);
       const boxes = await result;
       return boxes.map(([x, y, bw, bh, score]) => [x / s, y / s, bw / s, bh / s, score]);
     },
@@ -123,49 +123,88 @@
     return inter / (a.w * a.h + b.w * b.h - inter);
   }
 
+  const MAX_PREDICT_MS = 200;   // niet verder vooruit voorspellen dan dit
+  const MAX_SPEED = 3;          // px per ms; hoger is vrijwel zeker een meetfout
+  const MOTION_PAD_MS = 120;    // masker groeit met de afstand die je in deze tijd aflegt
+  const MOTION_PAD_MAX = 0.35;
+
   class Tracker {
     constructor() { this.faces = []; this.tick = 0; }
 
-    update(boxes) {
+    /** Voorspelde positie van een gezicht op tijdstip `now` (constante snelheid). */
+    static predict(f, now) {
+      const dt = Math.min(Math.max(0, now - f.t), MAX_PREDICT_MS);
+      return { x: f.x + f.vx * dt, y: f.y + f.vy * dt, w: f.w, h: f.h };
+    }
+
+    /**
+     * boxes: detecties in framecoördinaten; t: moment waarop het frame gemaakt is.
+     * Koppelt op overlap én afstand, zodat een snelle beweging hetzelfde gezicht
+     * blijft (geen spookmasker op de oude plek).
+     */
+    update(boxes, t) {
       this.tick++;
       const dets = boxes
         .filter(([, , w, h, s]) => s >= settings.confidence && w > settings.minSize && h > settings.minSize)
         .map(([x, y, w, h]) => ({ x, y, w, h }));
 
-      // Gulzige koppeling op hoogste overlap (bij enkele tot tientallen gezichten
-      // praktisch gelijk aan de Hongaarse methode in de Python-tool).
       const pairs = [];
       dets.forEach((d, i) => this.faces.forEach((f, j) => {
-        const v = iou(d, f);
-        if (v > 0.25) pairs.push([v, i, j]);
+        const p = Tracker.predict(f, t);
+        const v = iou(d, p);
+        const dist = Math.hypot(d.x + d.w / 2 - (p.x + p.w / 2), d.y + d.h / 2 - (p.y + p.h / 2)) / Math.max(f.w, f.h);
+        const score = v > 0.2 ? 1 + v : (dist < 1.2 ? 1 - dist / 1.2 : 0);
+        if (score > 0) pairs.push([score, i, j]);
       }));
       pairs.sort((a, b) => b[0] - a[0]);
       const usedD = new Set(), usedF = new Set();
       for (const [, i, j] of pairs) {
         if (usedD.has(i) || usedF.has(j)) continue;
         usedD.add(i); usedF.add(j);
-        Object.assign(this.faces[j], dets[i], { last: this.tick });
-        this.faces[j].hits++;
+        const f = this.faces[j], d = dets[i];
+        const dt = t - f.t;
+        if (dt > 0 && dt < 1000) {
+          const clamp = (v) => Math.max(-MAX_SPEED, Math.min(MAX_SPEED, v));
+          const vx = clamp((d.x + d.w / 2 - (f.x + f.w / 2)) / dt);
+          const vy = clamp((d.y + d.h / 2 - (f.y + f.h / 2)) / dt);
+          f.vx = f.hits > 1 ? 0.6 * vx + 0.4 * f.vx : vx;
+          f.vy = f.hits > 1 ? 0.6 * vy + 0.4 * f.vy : vy;
+        }
+        Object.assign(f, d, { t, last: this.tick });
+        f.hits++;
       }
       dets.forEach((d, i) => {
-        if (!usedD.has(i)) this.faces.push({ ...d, last: this.tick, hits: 1 });
+        if (!usedD.has(i)) this.faces.push({ ...d, t, vx: 0, vy: 0, last: this.tick, hits: 1 });
       });
 
+      // Kwijtgeraakte tracks die in een vers gezien gezicht vallen zijn dubbel
+      const fresh = this.faces.filter((f) => f.last === this.tick);
       this.faces = this.faces.filter((f) => {
+        if (f.last !== this.tick && fresh.some((g) =>
+          Math.hypot(f.x + f.w / 2 - (g.x + g.w / 2), f.y + f.h / 2 - (g.y + g.h / 2)) < 0.8 * Math.max(g.w, g.h))) {
+          return false;
+        }
         let limit = settings.persistence;
         if (settings.smartPersistence && f.hits < CONFIRM_HITS) limit = Math.min(limit, TENTATIVE_PERSISTENCE);
         return this.tick - f.last <= limit;
       });
     }
 
-    /** Vierkante maskers [x, y, size], kleinste eerst; groeien als een gezicht kwijt is. */
-    masks() {
+    /**
+     * Vierkante maskers [x, y, size] op tijdstip `now`, kleinste eerst.
+     * Ze schuiven mee met de beweging, groeien bij snelle bewegingen en als
+     * een gezicht kwijt is.
+     */
+    masks(now) {
       return this.faces
         .map((f) => {
+          const p = Tracker.predict(f, now);
+          const base = Math.max(f.w, f.h);
           const lost = this.tick - f.last;
-          const grow = 1 + Math.min(LOST_GROWTH_MAX, LOST_GROWTH * lost);
-          const size = Math.max(f.w, f.h) * settings.scale * grow;
-          return [f.x + f.w / 2 - size / 2, f.y + f.h / 2 - size / 2, size];
+          const motion = Math.min(MOTION_PAD_MAX, Math.hypot(f.vx, f.vy) * MOTION_PAD_MS / base);
+          const grow = 1 + Math.min(LOST_GROWTH_MAX, LOST_GROWTH * lost) + motion;
+          const size = base * settings.scale * grow;
+          return [p.x + p.w / 2 - size / 2, p.y + p.h / 2 - size / 2, size];
         })
         .sort((a, b) => a[2] - b[2]);
     }
@@ -186,8 +225,9 @@
     scheduleDetection(frame, w, h) {
       if (this.busy) return;
       this.busy = true;
+      const t = performance.now(); // moment van dit frame; de uitkomst komt later binnen
       detector.detect(frame.clone(), w, h)
-        .then((boxes) => { this.tracker.update(boxes); this.lastResult = performance.now(); })
+        .then((boxes) => { this.tracker.update(boxes, t); this.lastResult = performance.now(); })
         .catch(() => { /* fail-safe hieronder vangt dit af */ })
         .finally(() => { this.busy = false; });
     }
@@ -206,7 +246,7 @@
       if (!healthy && settings.failSafeBlur) {
         this.failSafe(w, h);
       } else {
-        for (const [x, y, size] of this.tracker.masks()) this.mask(x, y, size);
+        for (const [x, y, size] of this.tracker.masks(performance.now())) this.mask(x, y, size);
       }
       return new VideoFrame(this.canvas, { timestamp: frame.timestamp, duration: frame.duration ?? undefined });
     }
@@ -237,7 +277,17 @@
       if (mode === 'overlay') {
         const ow = overlayBitmap.width, oh = overlayBitmap.height;
         const r = size / Math.max(ow, oh);
-        ctx.drawImage(overlayBitmap, x + (size - ow * r) / 2, y + (size - oh * r) / 2, ow * r, oh * r);
+        const dw = ow * r, dh = oh * r;
+        if (settings.mirrorOverlay) {
+          // Spiegelen rond het midden van het masker
+          ctx.save();
+          ctx.translate(x + size / 2, 0);
+          ctx.scale(-1, 1);
+          ctx.drawImage(overlayBitmap, -dw / 2, y + (size - dh) / 2, dw, dh);
+          ctx.restore();
+        } else {
+          ctx.drawImage(overlayBitmap, x + (size - dw) / 2, y + (size - dh) / 2, dw, dh);
+        }
       } else if (mode === 'pixelate') {
         this.small.width = 8; this.small.height = 8;
         this.sctx.drawImage(this.canvas, x, y, size, size, 0, 0, 8, 8);
