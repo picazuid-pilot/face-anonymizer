@@ -10,6 +10,8 @@ Kies daarna gewoon de virtuele camera als bron in OBS, Zoom, Teams, Google Meet,
 - Twee vensters: bediening en een schaalbare preview
 - Debug-kaders zie je alleen in de preview, **nooit** in de stream
 
+https://github.com/user-attachments/assets/024daca7-4c85-42a7-befd-ff649e81f6b3
+
 ## Installatie
 
 ### Linux (Ubuntu, Debian, Mint, Fedora, Arch) – automatisch
