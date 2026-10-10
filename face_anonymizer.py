@@ -1,22 +1,27 @@
 #!/usr/bin/env python3
 """
-FACE ANONYMIZER - Dual Window Fixed
-- Overlay properly displayed on top
-- Debug box optional (under overlay)
-- Separate windows (no shrinking)
+FACE ANONYMIZER
+Anonimiseert gezichten in een live webcambeeld (YuNet-gezichtsdetectie) en
+stuurt het resultaat naar een virtuele camera (OBS Virtual Camera / v4l2loopback),
+zodat je het in OBS, Zoom, Teams, YouTube enz. als camerabron kunt kiezen.
+
+- Twee vensters: bediening + preview
+- Debug-kaders zijn ALLEEN zichtbaar in de preview, nooit in de stream
+- Fail-safe: zonder geladen overlay wordt er automatisch gepixeld
 """
 
+import queue
+import sys
+import threading
+import time
 import tkinter as tk
-from tkinter import ttk, filedialog
+import urllib.request
+from pathlib import Path
+from tkinter import filedialog, ttk
+
 import cv2
 import numpy as np
-from pathlib import Path
-import urllib.request
-import time
-import threading
 from scipy.optimize import linear_sum_assignment
-import sys
-import os
 
 try:
     import pyvirtualcam
@@ -26,12 +31,30 @@ except ImportError:
 
 try:
     from PIL import Image, ImageTk
-    PIL_AVAILABLE = True
 except ImportError:
-    import subprocess
-    subprocess.check_call(["pip", "install", "Pillow", "--break-system-packages"])
-    from PIL import Image, ImageTk
-    PIL_AVAILABLE = True
+    sys.exit("Pillow ontbreekt. Installeer de afhankelijkheden met: pip install -r requirements.txt")
+
+APP_DIR = Path(__file__).resolve().parent
+YUNET_URLS = [
+    "https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/"
+    "face_detection_yunet_2023mar.onnx",
+    "https://media.githubusercontent.com/media/opencv/opencv_zoo/main/models/face_detection_yunet/"
+    "face_detection_yunet_2023mar.onnx",
+]
+
+MODES = ["Overlay", "Pixelate", "Blur", "Black"]
+DETECT_WIDTHS = {"Full": 0, "1280": 1280, "960": 960, "640": 640}
+
+# Tracks die minder dan CONFIRM_HITS keer gezien zijn (waarschijnlijk
+# valse detecties) verdwijnen na hooguit TENTATIVE_PERSISTENCE frames.
+CONFIRM_HITS = 5
+TENTATIVE_PERSISTENCE = 5
+# Een kwijtgeraakt gezicht krijgt per gemist frame een iets groter masker,
+# zodat het nog bedekt is als de persoon beweegt.
+LOST_GROWTH_PER_FRAME = 0.015
+LOST_GROWTH_MAX = 0.4
+OVERLAY_CACHE_MAX = 128
+
 
 class AnonymizerWorker:
     def __init__(self):
@@ -42,716 +65,695 @@ class AnonymizerWorker:
         self.overlay = None
         self.overlay_cache = {}
         self.virtual_cam = None
-        
+        self._vcam_failed = False
+
         self.camera_id = 0
         self.scale_factor = 1.8
         self.confidence_threshold = 0.4
         self.min_face_size = 20
         self.persistence_frames = 60
+        self.smart_persistence = True
         self.max_faces = 30
+        self.mode = "Overlay"
+        self.detect_width = 0
         self.show_debug = True
         self.force_1080p = True
         self.enable_virtual_cam = False
-        self.virtual_cam_resolution = (1280, 720)
-        
+
         self.faces = []
         self.next_id = 0
         self.frame_count = 0
-        self.overlay_count = 0
         self.fps = 0
-        self.last_fps_time = 0
+        self.last_fps_time = time.time()
         self.fps_counter = 0
-        
-        self.current_frame = None
+
+        # Gedeeld met de GUI-thread
+        self.lock = threading.Lock()
+        self.latest_frame = None
+        self.latest_frame_id = 0
         self.stats = {}
-    
+        self.messages = queue.Queue()
+
+    # ------------------------------------------------------------ helpers
+    def _status(self, text, level="info"):
+        print(text)
+        self.messages.put((level, text))
+
     def load_overlay(self, path):
-        self.overlay = self._load_overlay(path)
-        return self.overlay is not None
-    
-    def _load_overlay(self, path):
-        if Path(path).exists():
-            overlay = cv2.imread(path, cv2.IMREAD_UNCHANGED)
-            if overlay is not None:
-                print(f"Overlay loaded: {overlay.shape}")
-                if overlay.shape[2] == 3:
-                    b, g, r = cv2.split(overlay)
-                    alpha = np.ones(b.shape, dtype=b.dtype) * 255
-                    overlay = cv2.merge([b, g, r, alpha])
-                    print("Added alpha channel")
-                return overlay
-        return None
-    
+        overlay = self._load_overlay(path)
+        if overlay is None:
+            return False
+        self.overlay = overlay
+        self.overlay_cache = {}  # oude geschaalde versies weggooien
+        return True
+
+    @staticmethod
+    def _load_overlay(path):
+        if not Path(path).exists():
+            return None
+        overlay = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
+        if overlay is None:
+            return None
+        if overlay.ndim == 2:
+            overlay = cv2.cvtColor(overlay, cv2.COLOR_GRAY2BGRA)
+        elif overlay.shape[2] == 3:
+            overlay = cv2.cvtColor(overlay, cv2.COLOR_BGR2BGRA)
+        print(f"Overlay loaded: {overlay.shape}")
+        return overlay
+
     def _load_yunet(self, width, height):
         model_dir = Path.home() / ".cache" / "yunet"
         model_dir.mkdir(parents=True, exist_ok=True)
-        
         model_path = model_dir / "face_detection_yunet_2023mar.onnx"
-        
-        if not model_path.exists():
-            print("Downloading YuNet model...")
-            url = "https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx"
-            urllib.request.urlretrieve(url, model_path)
-            print("Download complete!")
-        
+
+        if not model_path.exists() or model_path.stat().st_size < 100_000:
+            self._status("Downloading YuNet model...")
+            tmp = model_path.with_suffix(".part")
+            errors = []
+            for url in YUNET_URLS:
+                try:
+                    urllib.request.urlretrieve(url, tmp)
+                    # Een Git-LFS-pointer of foutpagina is maar een paar honderd bytes
+                    if tmp.stat().st_size >= 100_000:
+                        tmp.replace(model_path)  # nooit een half/ongeldig model achterlaten
+                        break
+                    errors.append(f"{url}: invalid file")
+                except Exception as e:  # noqa: BLE001
+                    errors.append(f"{url}: {e}")
+            else:
+                tmp.unlink(missing_ok=True)
+                raise RuntimeError("Model download failed. " + " | ".join(errors) +
+                                   f" — download it manually to {model_path}")
+
         detector = cv2.FaceDetectorYN.create(str(model_path), "", (width, height))
         detector.setScoreThreshold(self.confidence_threshold)
         detector.setNMSThreshold(0.3)
         return detector
-    
+
     def update_parameters(self, params):
-        self.scale_factor = params.get('scale_factor', self.scale_factor)
-        self.confidence_threshold = params.get('confidence', self.confidence_threshold)
-        self.min_face_size = params.get('min_face_size', self.min_face_size)
-        self.persistence_frames = params.get('persistence', self.persistence_frames)
-        self.max_faces = params.get('max_faces', self.max_faces)
-        self.show_debug = params.get('show_debug', self.show_debug)
-        self.force_1080p = params.get('force_1080p', self.force_1080p)
-        self.enable_virtual_cam = params.get('enable_virtual_cam', self.enable_virtual_cam)
-        
+        for key, attr in [('scale_factor', 'scale_factor'), ('confidence', 'confidence_threshold'),
+                          ('min_face_size', 'min_face_size'), ('persistence', 'persistence_frames'),
+                          ('smart_persistence', 'smart_persistence'), ('max_faces', 'max_faces'),
+                          ('mode', 'mode'), ('detect_width', 'detect_width'),
+                          ('show_debug', 'show_debug'), ('force_1080p', 'force_1080p'),
+                          ('enable_virtual_cam', 'enable_virtual_cam')]:
+            if key in params:
+                setattr(self, attr, params[key])
+        if not self.enable_virtual_cam:
+            self._vcam_failed = False  # opnieuw proberen bij volgende inschakeling
         if self.detector is not None:
             self.detector.setScoreThreshold(self.confidence_threshold)
-    
-    def init_virtual_cam(self):
-        if not VIRTUAL_CAM_AVAILABLE:
-            return False
-        
-        if self.virtual_cam is None:
+
+    def toggle_pause(self):
+        self.paused = not self.paused
+        return self.paused
+
+    # ------------------------------------------------------ virtual camera
+    def _open_virtual_cam(self, width, height, fps):
+        backends = [None] if sys.platform.startswith("linux") else ["obs", None]
+        last_error = None
+        for backend in backends:
             try:
-                self.virtual_cam = pyvirtualcam.Camera(
-                    width=self.virtual_cam_resolution[0],
-                    height=self.virtual_cam_resolution[1],
-                    fps=30,
-                    backend='obs'
-                )
-                return True
-            except Exception as e:
-                print(f"Virtual camera error: {e}")
-                return False
-        return True
-    
-    def send_to_virtual_cam(self, frame):
-        if self.virtual_cam is not None and self.enable_virtual_cam:
+                kwargs = {"backend": backend} if backend else {}
+                self.virtual_cam = pyvirtualcam.Camera(width=width, height=height, fps=fps, **kwargs)
+                self._status(f"Virtual camera: {self.virtual_cam.device} ({width}x{height})")
+                return
+            except Exception as e:  # noqa: BLE001 - pyvirtualcam gooit diverse fouten
+                last_error = e
+        self._vcam_failed = True
+        self._status(f"Virtual camera error: {last_error}", "error_soft")
+
+    def _sync_virtual_cam(self, frame, fps):
+        if self.enable_virtual_cam and VIRTUAL_CAM_AVAILABLE:
+            if self.virtual_cam is None and not self._vcam_failed:
+                self._open_virtual_cam(frame.shape[1], frame.shape[0], fps)
+            if self.virtual_cam is not None:
+                try:
+                    if (self.virtual_cam.width, self.virtual_cam.height) != (frame.shape[1], frame.shape[0]):
+                        frame = cv2.resize(frame, (self.virtual_cam.width, self.virtual_cam.height))
+                    self.virtual_cam.send(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+                except Exception as e:  # noqa: BLE001
+                    print(f"Virtual camera send error: {e}")
+        elif self.virtual_cam is not None:
+            self._close_virtual_cam()
+
+    def _close_virtual_cam(self):
+        if self.virtual_cam is not None:
             try:
-                if frame.shape[:2] != (self.virtual_cam_resolution[1], self.virtual_cam_resolution[0]):
-                    frame_resized = cv2.resize(frame, self.virtual_cam_resolution)
-                else:
-                    frame_resized = frame
-                frame_rgb = cv2.cvtColor(frame_resized, cv2.COLOR_BGR2RGB)
-                self.virtual_cam.send(frame_rgb)
-                self.virtual_cam.sleep_until_next_frame()
-            except Exception as e:
-                pass
-    
+                self.virtual_cam.close()
+            finally:
+                self.virtual_cam = None
+                self._status("Virtual camera closed")
+
+    # ----------------------------------------------------------- detection
     def detect_faces(self, frame):
-        self.detector.setInputSize((frame.shape[1], frame.shape[0]))
-        _, detections = self.detector.detect(frame)
-        
+        h, w = frame.shape[:2]
+        scale = 1.0
+        img = frame
+        if self.detect_width and w > self.detect_width:
+            scale = w / self.detect_width
+            img = cv2.resize(frame, (self.detect_width, int(round(h / scale))), interpolation=cv2.INTER_AREA)
+
+        self.detector.setInputSize((img.shape[1], img.shape[0]))
+        _, detections = self.detector.detect(img)
+
         faces = []
         if detections is not None:
             for det in detections:
-                x, y, w, h = det[:4].astype(int)
-                confidence = det[-1]
-                x = max(0, min(x, frame.shape[1] - w))
-                y = max(0, min(y, frame.shape[0] - h))
-                
-                if w > self.min_face_size and h > self.min_face_size:
-                    faces.append((x, y, w, h, confidence))
-        
+                # Niet naar binnen klemmen: een half buiten beeld vallend gezicht
+                # zou anders verschuiven. Randgevallen handelt het tekenen af.
+                x, y, bw, bh = (det[:4] * scale).astype(int)
+                confidence = float(det[-1])
+                if bw > self.min_face_size and bh > self.min_face_size:
+                    faces.append((x, y, bw, bh, confidence))
+
         if len(faces) > self.max_faces:
             faces.sort(key=lambda f: f[4], reverse=True)
             faces = faces[:self.max_faces]
-        
         return faces
-    
-    def iou(self, box1, box2):
+
+    @staticmethod
+    def iou(box1, box2):
         x1, y1, w1, h1 = box1
         x2, y2, w2, h2 = box2
-        
-        xi1 = max(x1, x2)
-        yi1 = max(y1, y2)
-        xi2 = min(x1 + w1, x2 + w2)
-        yi2 = min(y1 + h1, y2 + h2)
-        
+        xi1, yi1 = max(x1, x2), max(y1, y2)
+        xi2, yi2 = min(x1 + w1, x2 + w2), min(y1 + h1, y2 + h2)
         if xi2 <= xi1 or yi2 <= yi1:
-            return 0
-        
-        intersection = (xi2 - xi1) * (yi2 - yi1)
-        union = w1 * h1 + w2 * h2 - intersection
-        return intersection / union if union > 0 else 0
-    
+            return 0.0
+        inter = (xi2 - xi1) * (yi2 - yi1)
+        union = w1 * h1 + w2 * h2 - inter
+        return inter / union if union > 0 else 0.0
+
     def hungarian_match(self, detections, existing_faces):
         if not detections:
             return [], []
-        
         if not existing_faces:
             return [], list(range(len(detections)))
-        
-        num_detections = len(detections)
-        num_faces = len(existing_faces)
-        
-        cost_matrix = np.zeros((num_detections, num_faces))
-        
+
+        cost = np.ones((len(detections), len(existing_faces)))
         for i, det in enumerate(detections):
-            dx, dy, dw, dh = det[:4]
-            for j, face in enumerate(existing_faces):
-                fx, fy, fw, fh = face['x'], face['y'], face['w'], face['h']
-                iou_val = self.iou((dx, dy, dw, dh), (fx, fy, fw, fh))
-                cost_matrix[i, j] = 1 - iou_val
-        
-        row_ind, col_ind = linear_sum_assignment(cost_matrix)
-        
+            for j, f in enumerate(existing_faces):
+                cost[i, j] = 1 - self.iou(det[:4], (f['x'], f['y'], f['w'], f['h']))
+
+        rows, cols = linear_sum_assignment(cost)
         matches = []
-        unmatched_detections = list(range(num_detections))
-        
-        for i, j in zip(row_ind, col_ind):
-            iou_val = 1 - cost_matrix[i, j]
+        unmatched = set(range(len(detections)))
+        for i, j in zip(rows, cols):
+            iou_val = 1 - cost[i, j]
             if iou_val > 0.25:
                 matches.append((i, j, iou_val))
-                if i in unmatched_detections:
-                    unmatched_detections.remove(i)
-        
-        return matches, unmatched_detections
-    
+                unmatched.discard(i)
+        return matches, sorted(unmatched)
+
     def update_faces(self, detections, frame_num):
-        matches, unmatched_detections = self.hungarian_match(detections, self.faces)
-        
-        for det_idx, face_idx, iou_val in matches:
+        matches, unmatched = self.hungarian_match(detections, self.faces)
+
+        for det_idx, face_idx, _ in matches:
             x, y, w, h, conf = detections[det_idx]
-            self.faces[face_idx]['x'] = x
-            self.faces[face_idx]['y'] = y
-            self.faces[face_idx]['w'] = w
-            self.faces[face_idx]['h'] = h
-            self.faces[face_idx]['confidence'] = conf
-            self.faces[face_idx]['last_seen'] = frame_num
-        
-        for det_idx in unmatched_detections:
+            self.faces[face_idx].update(x=x, y=y, w=w, h=h, confidence=conf, last_seen=frame_num)
+            self.faces[face_idx]['hits'] += 1
+
+        for det_idx in unmatched:
             x, y, w, h, conf = detections[det_idx]
-            new_face = {
-                'id': self.next_id,
-                'x': x,
-                'y': y,
-                'w': w,
-                'h': h,
-                'confidence': conf,
-                'first_seen': frame_num,
-                'last_seen': frame_num,
-            }
-            self.faces.append(new_face)
-            print(f"New face #{self.next_id}: ({x},{y}) size={w}x{h}")
+            self.faces.append({'id': self.next_id, 'x': x, 'y': y, 'w': w, 'h': h,
+                               'confidence': conf, 'first_seen': frame_num,
+                               'last_seen': frame_num, 'hits': 1})
             self.next_id += 1
-        
-        self.faces = [f for f in self.faces if frame_num - f['last_seen'] <= self.persistence_frames]
+
+        def keep(f):
+            limit = self.persistence_frames
+            if self.smart_persistence and f['hits'] < CONFIRM_HITS:
+                limit = min(limit, TENTATIVE_PERSISTENCE)
+            return frame_num - f['last_seen'] <= limit
+
+        self.faces = [f for f in self.faces if keep(f)]
         return self.faces
-    
-    def overlay_face(self, frame, face):
-        """Overlay PNG on face - debug box drawn first, then overlay on top"""
-        try:
+
+    # ---------------------------------------------------------- rendering
+    def _mask_box(self, face):
+        """Vierkant masker rond het gezicht, groeiend zolang het gezicht kwijt is."""
+        lost = self.frame_count - face['last_seen']
+        grow = 1 + min(LOST_GROWTH_MAX, LOST_GROWTH_PER_FRAME * lost)
+        size = int(max(face['w'], face['h']) * self.scale_factor * grow)
+        cx = face['x'] + face['w'] // 2
+        cy = face['y'] + face['h'] // 2
+        return cx - size // 2, cy - size // 2, size
+
+    def _scaled_overlay(self, size):
+        size = max(4, (size + 3) // 4 * 4)  # afronden beperkt het aantal cache-items
+        if size not in self.overlay_cache:
+            if len(self.overlay_cache) >= OVERLAY_CACHE_MAX:
+                self.overlay_cache.clear()
+            oh, ow = self.overlay.shape[:2]
+            ratio = size / max(oh, ow)  # beeldverhouding behouden
+            tw, th = max(1, int(ow * ratio)), max(1, int(oh * ratio))
+            canvas = np.zeros((size, size, 4), dtype=np.uint8)
+            resized = cv2.resize(self.overlay, (tw, th), interpolation=cv2.INTER_AREA)
+            oy, ox = (size - th) // 2, (size - tw) // 2
+            canvas[oy:oy + th, ox:ox + tw] = resized
+            self.overlay_cache[size] = canvas
+        return self.overlay_cache[size]
+
+    def anonymize_face(self, frame, face):
+        x0, y0, size = self._mask_box(face)
+        if size < 4:
+            return
+        fh, fw = frame.shape[:2]
+        dx0, dy0 = max(0, x0), max(0, y0)
+        dx1, dy1 = min(fw, x0 + size), min(fh, y0 + size)
+        if dx1 <= dx0 or dy1 <= dy0:
+            return
+        roi = frame[dy0:dy1, dx0:dx1]
+
+        mode = self.mode
+        if mode == "Overlay" and self.overlay is None:
+            mode = "Pixelate"  # fail-safe: nooit een onbedekt gezicht
+
+        if mode == "Overlay":
+            ov = self._scaled_overlay(size)
+            size_q = ov.shape[0]
+            # ov kan door afronding een paar pixels groter zijn; centreren
+            off = (size_q - size) // 2
+            sx0, sy0 = dx0 - x0 + off, dy0 - y0 + off
+            ov_vis = ov[sy0:sy0 + roi.shape[0], sx0:sx0 + roi.shape[1]]
+            alpha = ov_vis[:, :, 3:4].astype(np.float32) / 255.0
+            roi[:] = (roi.astype(np.float32) * (1 - alpha)
+                      + ov_vis[:, :, :3].astype(np.float32) * alpha).astype(np.uint8)
+        elif mode == "Pixelate":
+            blocks = 8
+            small = cv2.resize(roi, (blocks, blocks), interpolation=cv2.INTER_AREA)
+            roi[:] = cv2.resize(small, (roi.shape[1], roi.shape[0]), interpolation=cv2.INTER_NEAREST)
+        elif mode == "Blur":
+            k = max(31, (size // 3) | 1)
+            roi[:] = cv2.GaussianBlur(roi, (k, k), 0)
+        else:  # Black
+            roi[:] = 0
+
+    def draw_debug(self, frame):
+        for face in self.faces:
             x, y, w, h = face['x'], face['y'], face['w'], face['h']
-            
-            if w < 15 or h < 15:
-                return frame
-            
-            # 1. Draw debug box FIRST (underneath overlay)
-            if self.show_debug:
-                cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
-                frames_since = self.frame_count - face['last_seen']
-                if frames_since > 0:
-                    status = f"{face['id']} (lost {frames_since})"
-                    color = (0, 200, 100)
-                else:
-                    status = f"{face['id']}"
-                    color = (0, 255, 0)
-                cv2.putText(frame, status, (x, y-5), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
-            
-            # 2. THEN apply overlay on top
-            if self.overlay is not None:
-                overlay_size = int(max(w, h) * self.scale_factor)
-                
-                cx = x + w // 2
-                cy = y + h // 2
-                
-                overlay_x = cx - overlay_size // 2
-                overlay_y = cy - overlay_size // 2
-                
-                key = (overlay_size, overlay_size)
-                if key not in self.overlay_cache:
-                    self.overlay_cache[key] = cv2.resize(self.overlay, key)
-                
-                ov = self.overlay_cache[key]
-                
-                # Handle edges
-                src_x = max(0, -overlay_x)
-                src_y = max(0, -overlay_y)
-                dst_x = max(0, overlay_x)
-                dst_y = max(0, overlay_y)
-                
-                visible_w = min(overlay_size - src_x, frame.shape[1] - dst_x)
-                visible_h = min(overlay_size - src_y, frame.shape[0] - dst_y)
-                
-                if visible_w > 0 and visible_h > 0:
-                    ov_visible = ov[src_y:src_y+visible_h, src_x:src_x+visible_w]
-                    alpha = ov_visible[:, :, 3] / 255.0
-                    alpha_3ch = alpha[..., np.newaxis]
-                    roi = frame[dst_y:dst_y+visible_h, dst_x:dst_x+visible_w]
-                    roi[:] = (roi.astype(np.float32) * (1 - alpha_3ch) + 
-                              ov_visible[:, :, :3].astype(np.float32) * alpha_3ch).astype(np.uint8)
-            
-            return frame
-        except Exception as e:
-            print(f"Overlay error: {e}")
-            return frame
-    
-    def run(self, callback):
+            lost = self.frame_count - face['last_seen']
+            color = (0, 255, 0) if lost == 0 else (0, 165, 255)
+            cv2.rectangle(frame, (x, y), (x + w, y + h), color, 2)
+            label = f"{face['id']} {face['confidence']:.2f}" + (f" lost {lost}" if lost else "")
+            cv2.putText(frame, label, (x, max(12, y - 5)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+        cv2.putText(frame, "DEBUG - preview only", (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+
+    def process_frame(self, frame, frame_num):
+        """Detecteer, track en anonimiseer één frame. Geeft (stream, preview) terug."""
+        self.frame_count = frame_num
+        detections = self.detect_faces(frame)
+        self.update_faces(detections, frame_num)
+        for face in sorted(self.faces, key=lambda f: f['w'] * f['h']):
+            self.anonymize_face(frame, face)
+        preview = frame
+        if self.show_debug:
+            preview = frame.copy()
+            self.draw_debug(preview)
+        return frame, preview, len(detections)
+
+    # ---------------------------------------------------------------- loop
+    def run(self):
         self.running = True
         self.paused = False
-        
+        self.faces = []
+
         self.cap = cv2.VideoCapture(self.camera_id)
         if not self.cap.isOpened():
-            callback("ERROR: Cannot open camera!", None)
+            self._status("ERROR: Cannot open camera!", "error")
+            self.running = False
             return
-        
+
         if self.force_1080p:
+            # Veel USB-webcams leveren 1080p30 alleen als MJPG
+            self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
             self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
             self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
-        
+
         width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        callback(f"Camera: {width}x{height}", None)
-        
-        self.detector = self._load_yunet(width, height)
-        
-        if self.enable_virtual_cam:
-            self.init_virtual_cam()
-        
+        cam_fps = self.cap.get(cv2.CAP_PROP_FPS)
+        cam_fps = int(cam_fps) if 5 <= cam_fps <= 120 else 30
+        self._status(f"Camera: {width}x{height} @ {cam_fps}fps")
+
+        try:
+            self.detector = self._load_yunet(width, height)
+        except Exception as e:  # noqa: BLE001
+            self._status(f"ERROR: Cannot load face model: {e}", "error")
+            self.cap.release()
+            self.running = False
+            return
+
+        self._status("Streaming...")
         frame_num = 0
-        callback("Streaming...", None)
-        
         while self.running:
             if self.paused:
                 time.sleep(0.05)
                 continue
-            
+
             ret, frame = self.cap.read()
             if not ret:
-                callback("Camera disconnected!", None)
+                self._status("ERROR: Camera disconnected!", "error")
                 break
-            
+
             frame_num += 1
-            self.frame_count = frame_num
-            
             self.fps_counter += 1
-            if time.time() - self.last_fps_time >= 1.0:
-                self.fps = self.fps_counter
+            now = time.time()
+            if now - self.last_fps_time >= 1.0:
+                self.fps = self.fps_counter / (now - self.last_fps_time)
                 self.fps_counter = 0
-                self.last_fps_time = time.time()
-            
-            detections = self.detect_faces(frame)
-            self.update_faces(detections, frame_num)
-            
-            # Sort by size for z-ordering
-            sorted_faces = sorted(self.faces, key=lambda f: f['w'] * f['h'])
-            
-            overlay_count = 0
-            for face in sorted_faces:
-                frame = self.overlay_face(frame, face)
-                overlay_count += 1
-            
-            self.overlay_count = overlay_count
-            
-            if self.enable_virtual_cam and self.virtual_cam is not None:
-                self.send_to_virtual_cam(frame)
-            
-            stats = {
-                'frame': frame_num,
-                'faces': len(self.faces),
-                'detections': len(detections),
-                'overlays': overlay_count,
-                'total_faces': self.next_id,
-                'fps': self.fps
-            }
-            self.stats = stats
-            
-            callback(None, frame)
-        
-        if self.virtual_cam is not None:
-            self.virtual_cam.close()
-            self.virtual_cam = None
-        
+                self.last_fps_time = now
+
+            stream, preview, n_det = self.process_frame(frame, frame_num)
+            self._sync_virtual_cam(stream, cam_fps)
+
+            with self.lock:
+                self.latest_frame = preview
+                self.latest_frame_id = frame_num
+                self.stats = {'frame': frame_num, 'faces': len(self.faces), 'detections': n_det,
+                              'total_faces': self.next_id, 'fps': self.fps}
+
+        self._close_virtual_cam()
         if self.cap:
             self.cap.release()
             self.cap = None
-        callback("Stopped", None)
+        self.running = False
+        self._status("Stopped", "stopped")
 
 
 class ControlsWindow:
-    """Separate window for controls"""
+    """Bedieningsvenster + apart previewvenster."""
+    BG = '#2b2b2b'
+
     def __init__(self, root, worker):
         self.root = root
         self.worker = worker
         self.is_streaming = False
-        self.video_window = None
-        
+        self.update_thread = None
+        self.last_rendered_id = 0
+
         self.setup_ui()
-        
-        # Try to load default overlay
-        overlay_files = ["overlay.png", "track.png", "logo.png"]
-        for f in overlay_files:
-            if Path(f).exists():
-                self.worker.load_overlay(f)
-                self.overlay_status.config(text=f"✓ {f} loaded", fg="#88ff88")
+
+        for f in [APP_DIR / "overlay.png", APP_DIR / "assets" / "overlay.png",
+                  Path("overlay.png"), Path("logo.png")]:
+            if f.exists() and self.worker.load_overlay(f):
+                self.overlay_status.config(text=f"✓ {f.name} loaded", fg="#88ff88")
                 break
         else:
-            self.overlay_status.config(text="No overlay loaded", fg="#ff8888")
-        
+            self.overlay_status.config(text="No overlay (pixelate fallback)", fg="#ffcc66")
+
         if VIRTUAL_CAM_AVAILABLE:
             self.virtual_cam_status.config(text="✓ Available", fg="#88ff88")
         else:
-            self.virtual_cam_status.config(text="✗ Not installed", fg="#ff8888")
-    
+            self.virtual_cam_status.config(text="✗ pyvirtualcam not installed", fg="#ff8888")
+
+        self.update_params()
+        self.root.after(15, self.poll)
+
+    # --------------------------------------------------------------- UI
+    def _frame(self, parent, text):
+        f = tk.LabelFrame(parent, text=text, bg=self.BG, fg='white', font=('Arial', 10, 'bold'))
+        f.pack(fill=tk.X, padx=5, pady=3)
+        return f
+
+    def _slider(self, parent, label, frm, to, init, fmt):
+        row = tk.Frame(parent, bg=self.BG)
+        row.pack(fill=tk.X, padx=5, pady=2)
+        tk.Label(row, text=label, bg=self.BG, fg='white', width=11, anchor='w').pack(side=tk.LEFT)
+        s = tk.Scale(row, from_=frm, to=to, orient=tk.HORIZONTAL, bg=self.BG, fg='white',
+                     highlightthickness=0, showvalue=False, command=self.update_params)
+        s.set(init)
+        s.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+        lbl = tk.Label(row, text="", bg=self.BG, fg='white', width=6)
+        lbl.pack(side=tk.RIGHT)
+        s.value_label, s.fmt = lbl, fmt
+        return s
+
+    def _check(self, parent, text, value):
+        var = tk.BooleanVar(value=value)
+        tk.Checkbutton(parent, text=text, variable=var, bg=self.BG, fg='white', selectcolor=self.BG,
+                       activebackground=self.BG, command=self.update_params).pack(anchor='w', padx=10, pady=1)
+        return var
+
     def setup_ui(self):
         self.root.title("Face Anonymizer - Controls")
-        self.root.geometry("420x780")
-        self.root.minsize(400, 700)
-        self.root.maxsize(450, 800)
-        self.root.configure(bg='#2b2b2b')
+        self.root.configure(bg=self.BG)
         self.root.resizable(False, False)
-        
-        main_frame = tk.Frame(self.root, bg='#2b2b2b')
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        
-        # Title
-        title = tk.Label(main_frame, text="🎭 Face Anonymizer", 
-                        font=('Arial', 18, 'bold'), bg='#2b2b2b', fg='#4CAF50')
-        title.pack(pady=5)
-        
-        # Status
-        self.status_label = tk.Label(main_frame, text="Ready", 
-                                    bg='#2b2b2b', fg='#88ff88', font=('Arial', 10))
+
+        main = tk.Frame(self.root, bg=self.BG)
+        main.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        tk.Label(main, text="🎭 Face Anonymizer", font=('Arial', 18, 'bold'),
+                 bg=self.BG, fg='#4CAF50').pack(pady=5)
+        self.status_label = tk.Label(main, text="Ready", bg=self.BG, fg='#88ff88',
+                                     font=('Arial', 10), wraplength=380)
         self.status_label.pack(pady=2)
-        
-        # --- Stream Controls ---
-        stream_frame = tk.LabelFrame(main_frame, text="Stream Controls", 
-                                     bg='#2b2b2b', fg='white', font=('Arial', 10, 'bold'))
-        stream_frame.pack(fill=tk.X, padx=5, pady=3)
-        
-        cam_frame = tk.Frame(stream_frame, bg='#2b2b2b')
-        cam_frame.pack(fill=tk.X, padx=5, pady=3)
-        tk.Label(cam_frame, text="Camera:", bg='#2b2b2b', fg='white').pack(side=tk.LEFT)
-        self.camera_combo = ttk.Combobox(cam_frame, values=["0", "1", "2", "3", "4"], width=5)
+
+        # Stream
+        stream = self._frame(main, "Stream Controls")
+        row = tk.Frame(stream, bg=self.BG)
+        row.pack(fill=tk.X, padx=5, pady=3)
+        tk.Label(row, text="Camera:", bg=self.BG, fg='white').pack(side=tk.LEFT)
+        self.camera_combo = ttk.Combobox(row, values=[str(i) for i in range(6)], width=4)
         self.camera_combo.set("0")
         self.camera_combo.pack(side=tk.LEFT, padx=5)
-        
-        btn_frame = tk.Frame(stream_frame, bg='#2b2b2b')
-        btn_frame.pack(fill=tk.X, padx=5, pady=3)
-        
-        self.start_btn = tk.Button(btn_frame, text="▶ Start", command=self.start_stream,
-                                  bg='#4CAF50', fg='white', font=('Arial', 10), padx=15)
+
+        btns = tk.Frame(stream, bg=self.BG)
+        btns.pack(fill=tk.X, padx=5, pady=3)
+        self.start_btn = tk.Button(btns, text="▶ Start", command=self.start_stream,
+                                   bg='#4CAF50', fg='white', font=('Arial', 10), padx=15)
         self.start_btn.pack(side=tk.LEFT, padx=2)
-        
-        self.pause_btn = tk.Button(btn_frame, text="⏸ Pause", command=self.toggle_pause,
-                                  bg='#FF9800', fg='white', font=('Arial', 10), padx=15, state='disabled')
+        self.pause_btn = tk.Button(btns, text="⏸ Pause", command=self.toggle_pause, bg='#FF9800',
+                                   fg='white', font=('Arial', 10), padx=15, state='disabled')
         self.pause_btn.pack(side=tk.LEFT, padx=2)
-        
-        self.stop_btn = tk.Button(btn_frame, text="⏹ Stop", command=self.stop_stream,
-                                 bg='#f44336', fg='white', font=('Arial', 10), padx=15, state='disabled')
+        self.stop_btn = tk.Button(btns, text="⏹ Stop", command=self.stop_stream, bg='#f44336',
+                                  fg='white', font=('Arial', 10), padx=15, state='disabled')
         self.stop_btn.pack(side=tk.LEFT, padx=2)
-        
-        # --- Overlay Controls ---
-        overlay_frame = tk.LabelFrame(main_frame, text="Overlay", 
-                                     bg='#2b2b2b', fg='white', font=('Arial', 10, 'bold'))
-        overlay_frame.pack(fill=tk.X, padx=5, pady=3)
-        
-        overlay_btn_frame = tk.Frame(overlay_frame, bg='#2b2b2b')
-        overlay_btn_frame.pack(fill=tk.X, padx=5, pady=3)
-        
-        self.overlay_btn = tk.Button(overlay_btn_frame, text="📁 Select PNG", command=self.select_overlay,
-                                    bg='#4a4a4a', fg='white')
-        self.overlay_btn.pack(side=tk.LEFT)
-        
-        self.overlay_status = tk.Label(overlay_btn_frame, text="No overlay loaded", 
-                                      bg='#2b2b2b', fg='#ff8888')
+
+        # Anonymization
+        anon = self._frame(main, "Anonymization")
+        row = tk.Frame(anon, bg=self.BG)
+        row.pack(fill=tk.X, padx=5, pady=3)
+        tk.Label(row, text="Mode:", bg=self.BG, fg='white', width=6, anchor='w').pack(side=tk.LEFT)
+        self.mode_combo = ttk.Combobox(row, values=MODES, width=10, state='readonly')
+        self.mode_combo.set("Overlay")
+        self.mode_combo.pack(side=tk.LEFT, padx=5)
+        self.mode_combo.bind("<<ComboboxSelected>>", self.update_params)
+
+        row = tk.Frame(anon, bg=self.BG)
+        row.pack(fill=tk.X, padx=5, pady=3)
+        tk.Button(row, text="📁 Select PNG", command=self.select_overlay,
+                  bg='#4a4a4a', fg='white').pack(side=tk.LEFT)
+        self.overlay_status = tk.Label(row, text="", bg=self.BG, fg='#ff8888')
         self.overlay_status.pack(side=tk.LEFT, padx=10)
-        
-        # Scale slider
-        scale_frame = tk.Frame(overlay_frame, bg='#2b2b2b')
-        scale_frame.pack(fill=tk.X, padx=5, pady=3)
-        tk.Label(scale_frame, text="Scale:", bg='#2b2b2b', fg='white', width=6).pack(side=tk.LEFT)
-        self.scale_slider = tk.Scale(scale_frame, from_=10, to=35, orient=tk.HORIZONTAL,
-                                    bg='#2b2b2b', fg='white', highlightthickness=0,
-                                    command=self.update_params)
-        self.scale_slider.set(18)
-        self.scale_slider.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
-        self.scale_label = tk.Label(scale_frame, text="1.8x", bg='#2b2b2b', fg='white', width=5)
-        self.scale_label.pack(side=tk.RIGHT)
-        
-        # --- Detection Parameters ---
-        detect_frame = tk.LabelFrame(main_frame, text="Detection", 
-                                    bg='#2b2b2b', fg='white', font=('Arial', 10, 'bold'))
-        detect_frame.pack(fill=tk.X, padx=5, pady=3)
-        
-        # Confidence
-        conf_frame = tk.Frame(detect_frame, bg='#2b2b2b')
-        conf_frame.pack(fill=tk.X, padx=5, pady=2)
-        tk.Label(conf_frame, text="Confidence:", bg='#2b2b2b', fg='white', width=10, anchor='w').pack(side=tk.LEFT)
-        self.conf_slider = tk.Scale(conf_frame, from_=20, to=80, orient=tk.HORIZONTAL,
-                                   bg='#2b2b2b', fg='white', highlightthickness=0,
-                                   command=self.update_params)
-        self.conf_slider.set(40)
-        self.conf_slider.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
-        self.conf_label = tk.Label(conf_frame, text="0.40", bg='#2b2b2b', fg='white', width=5)
-        self.conf_label.pack(side=tk.RIGHT)
-        
-        # Min Size
-        size_frame = tk.Frame(detect_frame, bg='#2b2b2b')
-        size_frame.pack(fill=tk.X, padx=5, pady=2)
-        tk.Label(size_frame, text="Min Size:", bg='#2b2b2b', fg='white', width=10, anchor='w').pack(side=tk.LEFT)
-        self.size_slider = tk.Scale(size_frame, from_=10, to=100, orient=tk.HORIZONTAL,
-                                   bg='#2b2b2b', fg='white', highlightthickness=0,
-                                   command=self.update_params)
-        self.size_slider.set(20)
-        self.size_slider.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
-        self.size_label = tk.Label(size_frame, text="20px", bg='#2b2b2b', fg='white', width=5)
-        self.size_label.pack(side=tk.RIGHT)
-        
-        # Persistence
-        persist_frame = tk.Frame(detect_frame, bg='#2b2b2b')
-        persist_frame.pack(fill=tk.X, padx=5, pady=2)
-        tk.Label(persist_frame, text="Persistence:", bg='#2b2b2b', fg='white', width=10, anchor='w').pack(side=tk.LEFT)
-        self.persist_slider = tk.Scale(persist_frame, from_=5, to=150, orient=tk.HORIZONTAL,
-                                      bg='#2b2b2b', fg='white', highlightthickness=0,
-                                      command=self.update_params)
-        self.persist_slider.set(60)
-        self.persist_slider.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
-        self.persist_label = tk.Label(persist_frame, text="60f", bg='#2b2b2b', fg='white', width=5)
-        self.persist_label.pack(side=tk.RIGHT)
-        
-        # Max Faces
-        max_frame = tk.Frame(detect_frame, bg='#2b2b2b')
-        max_frame.pack(fill=tk.X, padx=5, pady=2)
-        tk.Label(max_frame, text="Max Faces:", bg='#2b2b2b', fg='white', width=10, anchor='w').pack(side=tk.LEFT)
-        self.max_spin = tk.Spinbox(max_frame, from_=5, to=100, width=5,
-                                  bg='#3a3a3a', fg='white', relief=tk.FLAT)
+        self.scale_slider = self._slider(anon, "Scale:", 10, 35, 18, lambda v: f"{v / 10:.1f}x")
+
+        # Detection
+        det = self._frame(main, "Detection")
+        self.conf_slider = self._slider(det, "Confidence:", 20, 95, 40, lambda v: f"{v / 100:.2f}")
+        self.size_slider = self._slider(det, "Min Size:", 10, 100, 20, lambda v: f"{v}px")
+        self.persist_slider = self._slider(det, "Persistence:", 3, 150, 60, lambda v: f"{v}f")
+        self.smart_var = self._check(det, "Smart persistence (short hold for unconfirmed faces)", True)
+
+        row = tk.Frame(det, bg=self.BG)
+        row.pack(fill=tk.X, padx=5, pady=2)
+        tk.Label(row, text="Max Faces:", bg=self.BG, fg='white', width=11, anchor='w').pack(side=tk.LEFT)
+        self.max_spin = tk.Spinbox(row, from_=1, to=100, width=5, bg='#3a3a3a', fg='white',
+                                   relief=tk.FLAT, command=self.update_params)
         self.max_spin.delete(0, tk.END)
         self.max_spin.insert(0, "30")
         self.max_spin.pack(side=tk.LEFT, padx=5)
         self.max_spin.bind('<KeyRelease>', self.update_params)
-        
-        # --- Options ---
-        options_frame = tk.LabelFrame(main_frame, text="Options", 
-                                     bg='#2b2b2b', fg='white', font=('Arial', 10, 'bold'))
-        options_frame.pack(fill=tk.X, padx=5, pady=3)
-        
-        self.debug_var = tk.BooleanVar(value=True)
-        self.debug_check = tk.Checkbutton(options_frame, text="Show Debug Box (under overlay)",
-                                         variable=self.debug_var, bg='#2b2b2b', fg='white',
-                                         selectcolor='#2b2b2b', command=self.update_params)
-        self.debug_check.pack(anchor='w', padx=10, pady=1)
-        
-        self.res_var = tk.BooleanVar(value=True)
-        self.res_check = tk.Checkbutton(options_frame, text="Force 1080p",
-                                       variable=self.res_var, bg='#2b2b2b', fg='white',
-                                       selectcolor='#2b2b2b', command=self.update_params)
-        self.res_check.pack(anchor='w', padx=10, pady=1)
-        
-        self.virtual_cam_var = tk.BooleanVar(value=False)
-        self.virtual_cam_check = tk.Checkbutton(options_frame, text="Enable Virtual Camera (OBS)",
-                                               variable=self.virtual_cam_var, bg='#2b2b2b', fg='white',
-                                               selectcolor='#2b2b2b', command=self.update_params)
-        self.virtual_cam_check.pack(anchor='w', padx=10, pady=1)
-        
-        virtual_cam_status_frame = tk.Frame(options_frame, bg='#2b2b2b')
-        virtual_cam_status_frame.pack(anchor='w', padx=25, pady=1)
-        tk.Label(virtual_cam_status_frame, text="Virtual Cam:", bg='#2b2b2b', fg='#888').pack(side=tk.LEFT)
-        self.virtual_cam_status = tk.Label(virtual_cam_status_frame, text="Checking...", bg='#2b2b2b', fg='#ff8888')
+        tk.Label(row, text="Detect at:", bg=self.BG, fg='white').pack(side=tk.LEFT, padx=(10, 2))
+        self.detw_combo = ttk.Combobox(row, values=list(DETECT_WIDTHS), width=6, state='readonly')
+        self.detw_combo.set("Full")
+        self.detw_combo.pack(side=tk.LEFT)
+        self.detw_combo.bind("<<ComboboxSelected>>", self.update_params)
+
+        # Options
+        opt = self._frame(main, "Options")
+        self.debug_var = self._check(opt, "Show debug boxes (preview only, never streamed)", True)
+        self.preview_var = self._check(opt, "Show preview window", True)
+        self.res_var = self._check(opt, "Force 1080p (applies on next Start)", True)
+        self.virtual_cam_var = self._check(opt, "Enable Virtual Camera (OBS)", False)
+        row = tk.Frame(opt, bg=self.BG)
+        row.pack(anchor='w', padx=25, pady=1)
+        tk.Label(row, text="Virtual Cam:", bg=self.BG, fg='#888').pack(side=tk.LEFT)
+        self.virtual_cam_status = tk.Label(row, text="Checking...", bg=self.BG, fg='#ff8888')
         self.virtual_cam_status.pack(side=tk.LEFT, padx=5)
-        
-        # --- Statistics ---
-        stats_frame = tk.LabelFrame(main_frame, text="Statistics", 
-                                   bg='#2b2b2b', fg='white', font=('Arial', 10, 'bold'))
-        stats_frame.pack(fill=tk.X, padx=5, pady=3)
-        
-        self.total_faces_label = tk.Label(stats_frame, text="Total unique faces: 0", 
-                                         bg='#2b2b2b', fg='white')
+
+        # Stats
+        st = self._frame(main, "Statistics")
+        self.total_faces_label = tk.Label(st, text="Total unique faces: 0", bg=self.BG, fg='white')
         self.total_faces_label.pack(anchor='w', padx=10, pady=1)
-        
-        self.frames_label = tk.Label(stats_frame, text="Frames processed: 0", 
-                                    bg='#2b2b2b', fg='white')
+        self.frames_label = tk.Label(st, text="Frames processed: 0", bg=self.BG, fg='white')
         self.frames_label.pack(anchor='w', padx=10, pady=1)
-        
-        self.fps_label = tk.Label(stats_frame, text="FPS: 0", bg='#2b2b2b', fg='white')
+        self.fps_label = tk.Label(st, text="FPS: 0", bg=self.BG, fg='white')
         self.fps_label.pack(anchor='w', padx=10, pady=1)
-        
-        # Create video window
+
         self.create_video_window()
-        
-        # Update thread
-        self.update_thread = None
-        self.running = False
-    
+
     def create_video_window(self):
-        """Create the separate video preview window"""
         self.video_window = tk.Toplevel(self.root)
         self.video_window.title("Face Anonymizer - Video Preview")
         self.video_window.geometry("1280x720")
         self.video_window.minsize(640, 360)
         self.video_window.configure(bg='#1a1a1a')
-        
-        self.video_label = tk.Label(self.video_window, text="Waiting for stream...", 
+        # Sluiten = verbergen; de stream naar de virtuele camera loopt door
+        self.video_window.protocol("WM_DELETE_WINDOW", self.hide_preview)
+
+        status = tk.Frame(self.video_window, bg=self.BG, height=25)
+        status.pack(fill=tk.X, side=tk.BOTTOM)
+        status.pack_propagate(False)
+        self.video_status = tk.Label(status, text="Live Preview", bg=self.BG, fg='#888')
+        self.video_status.pack(side=tk.LEFT, padx=5)
+
+        self.video_label = tk.Label(self.video_window, text="Waiting for stream...",
                                     bg='#1a1a1a', fg='#666', font=('Arial', 16))
         self.video_label.pack(fill=tk.BOTH, expand=True)
-        
-        # Status at bottom
-        status_frame = tk.Frame(self.video_window, bg='#2b2b2b', height=25)
-        status_frame.pack(fill=tk.X, side=tk.BOTTOM)
-        status_frame.pack_propagate(False)
-        
-        self.video_status = tk.Label(status_frame, text="Live Preview | FPS: 0", 
-                                     bg='#2b2b2b', fg='#888')
-        self.video_status.pack(side=tk.LEFT, padx=5)
-    
+
+    def hide_preview(self):
+        self.preview_var.set(False)
+        self.update_params()
+
+    # ---------------------------------------------------------- actions
     def select_overlay(self):
-        file_path = filedialog.askopenfilename(title="Select Overlay PNG", filetypes=[("PNG Files", "*.png")])
-        if file_path:
-            if self.worker.load_overlay(file_path):
-                self.overlay_status.config(text=f"✓ {Path(file_path).name}", fg="#88ff88")
+        path = filedialog.askopenfilename(title="Select Overlay PNG", filetypes=[("PNG Files", "*.png")])
+        if path:
+            if self.worker.load_overlay(path):
+                self.overlay_status.config(text=f"✓ {Path(path).name}", fg="#88ff88")
             else:
                 self.overlay_status.config(text="❌ Failed to load", fg="#ff8888")
-    
-    def update_params(self, *args):
-        scale = self.scale_slider.get() / 10.0
-        self.scale_label.config(text=f"{scale:.1f}x")
-        
-        conf = self.conf_slider.get() / 100.0
-        self.conf_label.config(text=f"{conf:.2f}")
-        
-        size = self.size_slider.get()
-        self.size_label.config(text=f"{size}px")
-        
-        persist = self.persist_slider.get()
-        self.persist_label.config(text=f"{persist}f")
-        
-        params = {
-            'scale_factor': scale,
-            'confidence': conf,
-            'min_face_size': size,
-            'persistence': persist,
-            'max_faces': int(self.max_spin.get()),
+
+    def update_params(self, *_):
+        for s in (self.scale_slider, self.conf_slider, self.size_slider, self.persist_slider):
+            s.value_label.config(text=s.fmt(s.get()))
+        try:
+            max_faces = max(1, int(self.max_spin.get()))
+        except ValueError:
+            max_faces = self.worker.max_faces  # half ingetypt getal negeren
+
+        if self.preview_var.get():
+            self.video_window.deiconify()
+        else:
+            self.video_window.withdraw()
+
+        self.worker.update_parameters({
+            'scale_factor': self.scale_slider.get() / 10.0,
+            'confidence': self.conf_slider.get() / 100.0,
+            'min_face_size': self.size_slider.get(),
+            'persistence': self.persist_slider.get(),
+            'smart_persistence': self.smart_var.get(),
+            'max_faces': max_faces,
+            'mode': self.mode_combo.get(),
+            'detect_width': DETECT_WIDTHS[self.detw_combo.get()],
             'show_debug': self.debug_var.get(),
             'force_1080p': self.res_var.get(),
-            'enable_virtual_cam': self.virtual_cam_var.get()
-        }
-        
-        if self.is_streaming:
-            self.worker.update_parameters(params)
-    
+            'enable_virtual_cam': self.virtual_cam_var.get(),
+        })
+
     def start_stream(self):
-        camera_id = int(self.camera_combo.get())
+        try:
+            self.worker.camera_id = int(self.camera_combo.get())
+        except ValueError:
+            self.set_status("Invalid camera number", '#ff4444')
+            return
         self.is_streaming = True
-        self.worker.camera_id = camera_id
-        
+        self.last_rendered_id = 0
         self.start_btn.config(state='disabled')
         self.stop_btn.config(state='normal')
-        self.pause_btn.config(state='normal')
+        self.pause_btn.config(state='normal', text="⏸ Pause")
         self.camera_combo.config(state='disabled')
-        
         self.update_params()
-        
-        self.running = True
-        self.update_thread = threading.Thread(target=self.process_frames)
-        self.update_thread.daemon = True
+        self.update_thread = threading.Thread(target=self.worker.run, daemon=True)
         self.update_thread.start()
-    
-    def process_frames(self):
-        def callback(status, frame):
-            if status and "ERROR" in status:
-                self.status_label.config(text=status, fg='#ff4444')
-                self.root.after(0, self.stop_stream)
-                return
-            
-            if status:
-                self.root.after(0, lambda: self.status_label.config(text=status, fg='#88ff88'))
-            
-            if frame is not None:
-                self.root.after(0, lambda f=frame: self.update_video(f))
-                self.root.after(0, lambda: self.update_stats(self.worker.stats))
-        
-        self.worker.run(callback)
-        self.running = False
-    
-    def update_video(self, frame):
-        """Update the video preview window"""
-        try:
-            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            h, w, ch = rgb.shape
-            
-            label_width = self.video_label.winfo_width()
-            label_height = self.video_label.winfo_height()
-            
-            if label_width > 10 and label_height > 10:
-                scale = min(label_width / w, label_height / h)
-                new_w = int(w * scale)
-                new_h = int(h * scale)
-                if new_w > 0 and new_h > 0:
-                    rgb = cv2.resize(rgb, (new_w, new_h))
-                    h, w = new_h, new_w
-            
-            image = Image.fromarray(rgb)
-            photo = ImageTk.PhotoImage(image)
-            self.video_label.config(image=photo)
-            self.video_label.image = photo
-            
-            # Update status
-            self.video_status.config(text=f"Live Preview | FPS: {self.worker.fps:.1f} | Faces: {len(self.worker.faces)}")
-        except Exception as e:
-            pass
-    
-    def update_stats(self, stats):
-        if stats:
-            self.fps_label.config(text=f"FPS: {stats.get('fps', 0):.1f}")
-            self.total_faces_label.config(text=f"Total unique faces: {stats.get('total_faces', 0)}")
-            self.frames_label.config(text=f"Frames processed: {stats.get('frame', 0)}")
-    
+
     def toggle_pause(self):
         if self.is_streaming:
-            paused = self.worker.pause_stream()
+            paused = self.worker.toggle_pause()
             self.pause_btn.config(text="▶ Resume" if paused else "⏸ Pause")
-    
+
     def stop_stream(self):
-        self.is_streaming = False
         self.worker.running = False
         self.worker.paused = False
-        
-        if self.update_thread:
-            self.update_thread.join(timeout=1)
-        
+        if self.update_thread and self.update_thread is not threading.current_thread():
+            self.update_thread.join(timeout=2)
+        self._reset_ui()
+
+    def _reset_ui(self):
+        self.is_streaming = False
         self.start_btn.config(state='normal')
         self.stop_btn.config(state='disabled')
-        self.pause_btn.config(state='disabled')
-        self.pause_btn.config(text="⏸ Pause")
+        self.pause_btn.config(state='disabled', text="⏸ Pause")
         self.camera_combo.config(state='normal')
-        
-        self.status_label.config(text="Stopped", fg='#888')
         self.video_label.config(image='', text="Stream ended")
-        
-        self.running = False
-    
+        self.video_label.image = None
+
+    def set_status(self, text, color='#88ff88'):
+        self.status_label.config(text=text, fg=color)
+
+    # ------------------------------------------------- GUI polling loop
+    def poll(self):
+        """Draait in de GUI-thread: verwerkt statusberichten en toont het nieuwste frame.
+        Zo stapelen er nooit frames op als de preview trager is dan de camera."""
+        try:
+            while True:
+                level, text = self.worker.messages.get_nowait()
+                if level == "error":
+                    self.set_status(text, '#ff4444')
+                    self._reset_ui()
+                elif level == "error_soft":
+                    self.set_status(text, '#ffcc66')
+                elif level == "stopped":
+                    if not self.status_label.cget('text').startswith("ERROR"):
+                        self.set_status("Stopped", '#888')
+                else:
+                    self.set_status(text)
+        except queue.Empty:
+            pass
+
+        if self.is_streaming:
+            with self.worker.lock:
+                frame_id = self.worker.latest_frame_id
+                frame = self.worker.latest_frame
+                stats = dict(self.worker.stats)
+            if frame is not None and frame_id != self.last_rendered_id:
+                self.last_rendered_id = frame_id
+                if self.preview_var.get():
+                    self.update_video(frame, stats)
+                self.update_stats(stats)
+
+        self.root.after(15, self.poll)
+
+    def update_video(self, frame, stats):
+        lw, lh = self.video_label.winfo_width(), self.video_label.winfo_height()
+        h, w = frame.shape[:2]
+        if lw > 10 and lh > 10:
+            scale = min(lw / w, lh / h)
+            nw, nh = max(1, int(w * scale)), max(1, int(h * scale))
+            frame = cv2.resize(frame, (nw, nh), interpolation=cv2.INTER_AREA if scale < 1 else cv2.INTER_LINEAR)
+        photo = ImageTk.PhotoImage(Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)))
+        self.video_label.config(image=photo, text="")
+        self.video_label.image = photo
+        self.video_status.config(text=f"Live Preview | FPS: {stats.get('fps', 0):.1f} | "
+                                      f"Faces: {stats.get('faces', 0)}")
+
+    def update_stats(self, stats):
+        self.fps_label.config(text=f"FPS: {stats.get('fps', 0):.1f}")
+        self.total_faces_label.config(text=f"Total unique faces: {stats.get('total_faces', 0)}")
+        self.frames_label.config(text=f"Frames processed: {stats.get('frame', 0)}")
+
     def on_closing(self):
-        """Handle window close"""
         self.stop_stream()
-        if self.video_window:
-            self.video_window.destroy()
         self.root.destroy()
 
 
 def main():
     root = tk.Tk()
-    worker = AnonymizerWorker()
-    controls = ControlsWindow(root, worker)
-    
+    controls = ControlsWindow(root, AnonymizerWorker())
     root.protocol("WM_DELETE_WINDOW", controls.on_closing)
     root.mainloop()
+
 
 if __name__ == "__main__":
     main()
