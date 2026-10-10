@@ -1,5 +1,8 @@
 # Changelog
 
+## 2.2.0
+- **Mirror overlay** in de desktopversie, live aan en uit te zetten (zelfde optie als in de browserextensie)
+
 ## 2.1.0
 - `install.sh` voor Linux: installeert alles in één keer, inclusief virtuele camera die na een herstart beschikbaar blijft
 - Snelkoppeling in het app-menu en op het bureaublad; starten zonder terminal

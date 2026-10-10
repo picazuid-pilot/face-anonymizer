@@ -93,6 +93,22 @@ def test_lost_face_mask_grows():
     assert w._mask_box(f)[2] > s0
 
 
+def test_mirror_overlay():
+    w = make_worker()
+    w.frame_count = 1
+    f = face(x=200, y=150, w=160, h=160)
+    plain = np.full((480, 640, 3), 127, np.uint8)
+    w.anonymize_face(plain, f)
+    w.update_parameters({'mirror_overlay': True})
+    mirrored = np.full((480, 640, 3), 127, np.uint8)
+    w.anonymize_face(mirrored, f)
+    x0, y0, size = w._mask_box(f)
+    a = plain[y0:y0 + size, x0:x0 + size]
+    b = mirrored[y0:y0 + size, x0:x0 + size]
+    assert not np.array_equal(a, b)                       # echt anders
+    assert np.abs(a.astype(int) - b[:, ::-1].astype(int)).mean() < 2  # en precies gespiegeld
+
+
 def test_toggle_pause():
     w = fa.AnonymizerWorker()
     assert w.toggle_pause() is True and w.toggle_pause() is False

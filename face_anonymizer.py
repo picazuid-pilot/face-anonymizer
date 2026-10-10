@@ -75,6 +75,7 @@ class AnonymizerWorker:
         self.smart_persistence = True
         self.max_faces = 30
         self.mode = "Overlay"
+        self.mirror_overlay = False
         self.detect_width = 0
         self.show_debug = True
         self.force_1080p = True
@@ -154,7 +155,7 @@ class AnonymizerWorker:
         for key, attr in [('scale_factor', 'scale_factor'), ('confidence', 'confidence_threshold'),
                           ('min_face_size', 'min_face_size'), ('persistence', 'persistence_frames'),
                           ('smart_persistence', 'smart_persistence'), ('max_faces', 'max_faces'),
-                          ('mode', 'mode'), ('detect_width', 'detect_width'),
+                          ('mode', 'mode'), ('mirror_overlay', 'mirror_overlay'), ('detect_width', 'detect_width'),
                           ('show_debug', 'show_debug'), ('force_1080p', 'force_1080p'),
                           ('enable_virtual_cam', 'enable_virtual_cam')]:
             if key in params:
@@ -301,7 +302,8 @@ class AnonymizerWorker:
 
     def _scaled_overlay(self, size):
         size = max(4, (size + 3) // 4 * 4)  # afronden beperkt het aantal cache-items
-        if size not in self.overlay_cache:
+        key = (size, self.mirror_overlay)
+        if key not in self.overlay_cache:
             if len(self.overlay_cache) >= OVERLAY_CACHE_MAX:
                 self.overlay_cache.clear()
             oh, ow = self.overlay.shape[:2]
@@ -311,8 +313,10 @@ class AnonymizerWorker:
             resized = cv2.resize(self.overlay, (tw, th), interpolation=cv2.INTER_AREA)
             oy, ox = (size - th) // 2, (size - tw) // 2
             canvas[oy:oy + th, ox:ox + tw] = resized
-            self.overlay_cache[size] = canvas
-        return self.overlay_cache[size]
+            if self.mirror_overlay:
+                canvas = cv2.flip(canvas, 1)  # horizontaal spiegelen
+            self.overlay_cache[key] = canvas
+        return self.overlay_cache[key]
 
     def anonymize_face(self, frame, face):
         x0, y0, size = self._mask_box(face)
@@ -546,6 +550,7 @@ class ControlsWindow:
                   bg='#4a4a4a', fg='white').pack(side=tk.LEFT)
         self.overlay_status = tk.Label(row, text="", bg=self.BG, fg='#ff8888')
         self.overlay_status.pack(side=tk.LEFT, padx=10)
+        self.mirror_var = self._check(anon, "Mirror overlay (only if you also stream mirrored)", False)
         self.scale_slider = self._slider(anon, "Scale:", 10, 35, 18, lambda v: f"{v / 10:.1f}x")
 
         # Detection
@@ -646,6 +651,7 @@ class ControlsWindow:
             'smart_persistence': self.smart_var.get(),
             'max_faces': max_faces,
             'mode': self.mode_combo.get(),
+            'mirror_overlay': self.mirror_var.get(),
             'detect_width': DETECT_WIDTHS[self.detw_combo.get()],
             'show_debug': self.debug_var.get(),
             'force_1080p': self.res_var.get(),
