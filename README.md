@@ -14,6 +14,12 @@ https://github.com/user-attachments/assets/024daca7-4c85-42a7-befd-ff649e81f6b3
 
 [![Anonymizer for Desktop, webbrowser, Zoom, Meet, Photo's](https://img.youtube.com/vi/MOAy1L4CMFw/0.jpg)](https://www.youtube.com/watch?v=MOAy1L4CMFw)
 
+
+<img width="1822" height="863" alt="Blindfolded Mid-Century Meeting" src="https://github.com/user-attachments/assets/6f539450-b3ab-4ea7-af2c-c94842111238" />
+<img width="649" height="355" alt="Screenshot from 2026-10-11 22-13-50" src="https://github.com/user-attachments/assets/0b10df03-c978-4fb8-961c-70baa0e0dd37" />
+
+
+
 ## Welke tool heb je nodig?
 
 | Je wilt… | Gebruik |
