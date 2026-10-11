@@ -8,3 +8,5 @@ venv/
 .DS_Store
 Thumbs.db
 !browser-extension/models/*.onnx
+dist/
+_site/

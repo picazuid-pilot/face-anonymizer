@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Niets mag deze pagina verlaten: alleen eigen bestanden, geen externe verbindingen -->
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; img-src 'self' blob: data:; connect-src 'self' blob: data:; style-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta name="referrer" content="no-referrer">
+  <title>Foto Anonymizer</title>
+  <meta name="description" content="Maak gezichten op foto's onherkenbaar met een logo, pixels, blur of een zwart vlak. Alles gebeurt in je eigen browser.">
+  <link rel="icon" href="assets/icon.png">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <header class="top">
+    <img src="assets/icon.png" alt="" width="40" height="40">
+    <div>
+      <h1>Foto Anonymizer</h1>
+      <p class="promise">Je foto's verlaten je computer niet: alles gebeurt in deze browser. Locatie en andere metadata worden verwijderd.</p>
+    </div>
+  </header>
+
+  <main>
+    <section class="setup">
+      <div class="step drop-step">
+        <h2><span class="num" aria-hidden="true">1</span>Foto's kiezen</h2>
+        <label class="drop" id="drop" tabindex="0">
+          <input type="file" id="files" accept="image/jpeg,image/png,image/webp,image/bmp,image/gif,.heic,.heif" multiple hidden>
+          <span class="drop-main">Sleep foto's of een map hierheen</span>
+          <span class="drop-sub">of <u>kies foto's</u> · <button type="button" class="linkish" id="pickFolder">kies een map</button></span>
+          <input type="file" id="folder" webkitdirectory hidden>
+        </label>
+        <p class="hint">JPG, PNG en WebP. Iphone-foto's (HEIC) werken alleen in de desktop-app.</p>
+      </div>
+
+      <div class="step settings-step">
+        <h2><span class="num" aria-hidden="true">2</span>Afdekking kiezen</h2>
+        <fieldset class="modes">
+          <legend class="sr-only">Manier van afdekken</legend>
+          <label><input type="radio" name="mode" value="overlay" checked><span><i class="sw sw-overlay"></i>Logo</span></label>
+          <label><input type="radio" name="mode" value="pixelate"><span><i class="sw sw-pixel"></i>Pixels</span></label>
+          <label><input type="radio" name="mode" value="blur"><span><i class="sw sw-blur"></i>Blur</span></label>
+          <label><input type="radio" name="mode" value="black"><span><i class="sw sw-black"></i>Zwart</span></label>
+        </fieldset>
+
+        <div class="overlay-row" id="overlayRow">
+          <img id="overlayPreview" src="assets/overlay.png" alt="Huidig logo" width="44" height="44">
+          <div>
+            <button type="button" id="pickOverlay">Ander logo kiezen</button>
+            <button type="button" class="linkish" id="resetOverlay">standaard</button>
+            <input type="file" id="overlayFile" accept="image/png,image/webp,image/jpeg" hidden>
+            <label class="inline"><input type="checkbox" id="mirror"> Logo spiegelen</label>
+          </div>
+        </div>
+
+        <label class="range">
+          <span>Maskergrootte</span>
+          <input type="range" id="scale" min="1" max="3" step="0.1" value="1.6">
+          <output id="scaleOut">1,6×</output>
+        </label>
+
+        <details class="more">
+          <summary>Detectie</summary>
+          <fieldset class="seg">
+            <legend>Nauwkeurigheid</legend>
+            <label><input type="radio" name="accuracy" value="fast"><span>Snel</span></label>
+            <label><input type="radio" name="accuracy" value="normal" checked><span>Normaal</span></label>
+            <label><input type="radio" name="accuracy" value="thorough"><span>Grondig</span></label>
+          </fieldset>
+          <p class="hint">Grondig vindt ook kleine gezichten ver weg, zoals publiek in een zaal, maar is trager.</p>
+          <label class="range">
+            <span>Zekerheid</span>
+            <input type="range" id="confidence" min="0.3" max="0.9" step="0.05" value="0.5">
+            <output id="confidenceOut">0,50</output>
+          </label>
+          <p class="hint">Lager vindt meer gezichten maar ook vaker iets wat geen gezicht is.</p>
+          <button type="button" id="redetect" disabled>Alle foto's opnieuw doorzoeken</button>
+        </details>
+      </div>
+    </section>
+
+    <section class="results" aria-labelledby="resultsTitle">
+      <div class="results-head">
+        <h2 id="resultsTitle"><span class="num" aria-hidden="true">3</span>Controleren en downloaden</h2>
+        <p class="summary" id="summary" aria-live="polite">Nog geen foto's.</p>
+      </div>
+      <p class="hint check-hint" id="checkHint" hidden>Klik op een foto om hem na te lopen. Je kunt daar maskers weghalen of toevoegen.</p>
+      <ol class="sheet" id="sheet"></ol>
+    </section>
+  </main>
+
+  <div class="bar" id="bar" hidden>
+    <div class="progress" aria-hidden="true"><div id="progressFill"></div></div>
+    <p id="barText" aria-live="polite"></p>
+    <button type="button" class="ghost" id="clear">Leegmaken</button>
+    <button type="button" class="primary" id="downloadAll" disabled>Alles downloaden (ZIP)</button>
+  </div>
+
+  <dialog id="review" aria-labelledby="reviewTitle">
+    <div class="review-head">
+      <button type="button" id="prev" aria-label="Vorige foto">‹</button>
+      <h2 id="reviewTitle"></h2>
+      <button type="button" id="next" aria-label="Volgende foto">›</button>
+      <label class="inline"><input type="checkbox" id="showOriginal"> Origineel</label>
+      <button type="button" id="downloadOne">Download</button>
+      <button type="button" class="close" id="closeReview" aria-label="Sluiten">×</button>
+    </div>
+    <p class="review-help">Klik op een masker om het weg te halen. Sleep over een gezicht om een masker toe te voegen.</p>
+    <div class="stage" id="stage">
+      <img id="reviewImg" alt="">
+      <div class="boxes" id="boxes"></div>
+    </div>
+  </dialog>
+
+  <noscript><p class="noscript">Deze tool heeft JavaScript nodig.</p></noscript>
+  <script src="zip.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

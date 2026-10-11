@@ -12,6 +12,17 @@ Kies daarna gewoon de virtuele camera als bron in OBS, Zoom, Teams, Google Meet,
 
 https://github.com/user-attachments/assets/024daca7-4c85-42a7-befd-ff649e81f6b3
 
+## Welke tool heb je nodig?
+
+| Je wilt… | Gebruik |
+|---|---|
+| Live webcambeeld anonimiseren voor OBS, Zoom, Teams of Meet | **Face Anonymizer** (desktop-app, deze pagina) |
+| Hetzelfde, maar alleen in Meet, Zoom of Teams in de browser | **[Browserextensie](browser-extension/)** |
+| Een map vol foto's anonimiseren op je eigen computer | **[Foto Anonymizer](#-foto-anonymizer)** (desktop-app) |
+| Foto's anonimiseren zonder iets te installeren | **[Foto Anonymizer webtool](#webtool)** |
+
+Alle tools gebruiken hetzelfde gezichtsmodel en werken volledig lokaal: er gaan geen beelden naar een server.
+
 ## Installatie
 
 ### Linux (Ubuntu, Debian, Mint, Fedora, Arch) – automatisch
@@ -99,7 +110,49 @@ pip install pytest
 python -m pytest tests/
 ```
 
-De tests draaien zonder camera of scherm.
+De tests draaien zonder camera of scherm. Ze controleren onder meer dat debug-kaders nooit in de stream komen, dat elke afdekmodus het gezicht echt bedekt, dat kleine en grote gezichten gevonden worden, dat metadata verdwijnt en dat telefoonfoto's rechtop komen.
+
+## 🖼 Foto Anonymizer
+
+Maakt alle gezichten op een map vol foto's onherkenbaar, bijvoorbeeld foto's van een bijeenkomst die je wilt delen of publiceren.
+
+- **Originelen blijven altijd bewaard**: de resultaten komen in een aparte map (standaard `<map>_anoniem`), met dezelfde submappen
+- **Logo, pixels, blur of zwart vlak**, dezelfde keuzes als bij de live-tool; ook overlay spiegelen
+- **Metadata wordt verwijderd**: GPS-locatie, cameratype en datum gaan niet mee
+- **Telefoonfoto's** worden rechtop gezet; iPhone-foto's (HEIC) worden JPG
+- **Ook kleine gezichten**: er wordt op meerdere schalen gezocht; *Grondig* zoekt daarnaast in stukken van de foto op volle resolutie, voor publiek ver weg
+- **Nalopen**: foto's zonder gevonden gezicht worden gemarkeerd. Klik een foto aan om maskers weg te halen (klik) of toe te voegen (slepen); de foto wordt direct opnieuw opgeslagen
+
+### Desktop-app
+
+Na `./install.sh` staat **Foto Anonymizer** in je app-menu en op je bureaublad. Kies een map, kies de afdekking en druk op **Start**. Dubbelklik daarna op een foto in de lijst om hem na te lopen.
+
+Zonder venster, bijvoorbeeld voor een script:
+
+```bash
+python photo_anonymizer.py ~/Fotos/bijeenkomst              # → ~/Fotos/bijeenkomst_anoniem
+python photo_anonymizer.py BRON DOEL -r --mode pixelate --accuracy thorough
+python photo_anonymizer.py --help
+```
+
+### Webtool
+
+Dezelfde functie in de browser, zonder installatie: sleep foto's of een hele map op de pagina, loop ze na en download alles als ZIP. **De foto's worden niet geüpload**: alles gebeurt in je eigen browser, en de pagina mag technisch gezien geen verbinding maken met andere websites. Getest in Chrome (dus ook Edge), op de computer en op telefoonformaat; Firefox en Safari zijn nog niet getest.
+
+- **Online**: https://picazuid-pilot.github.io/face-anonymizer/ (wordt bij elke wijziging automatisch bijgewerkt via GitHub Pages)
+- **Op je eigen website** (bijv. InfinityFree): voer `web/build.sh` uit en zet de inhoud van `dist/web` in een map op je hosting. Er is geen PHP of database nodig. Na `install.sh` staat de gebouwde versie ook al klaar in `~/.local/share/face-anonymizer/web`.
+
+iPhone-foto's (HEIC) kan de browser niet openen; gebruik daarvoor de desktop-app.
+
+### Desktop-app of webtool?
+
+| | Desktop-app | Webtool |
+|---|---|---|
+| Installatie | `install.sh` | Geen |
+| Grote mappen (honderden foto's) | Beter: schrijft direct naar schijf | Prima tot enkele honderden foto's |
+| iPhone-foto's (HEIC) | Ja | Nee |
+| Mappenstructuur behouden | Ja | Ja (bij een map slepen of kiezen) |
+| Snelheid | Sneller | Iets trager |
 
 ## Browserextensie (Chrome/Edge)
 

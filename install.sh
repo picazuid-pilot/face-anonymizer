@@ -8,6 +8,8 @@
 #   4. De virtuele camera instellen zodat hij ook na een herstart beschikbaar is
 #   5. Een snelkoppeling maken in het app-menu en op het bureaublad
 #
+# Installeert twee apps: Face Anonymizer (live webcam) en Foto Anonymizer (mappen met foto's).
+#
 # Gebruik:   ./install.sh            (vraagt om bevestiging waar nodig)
 #            ./install.sh --yes      (alles automatisch)
 #            ./install.sh --no-virtualcam   (zonder virtuele camera)
@@ -21,8 +23,6 @@ APP_NAME="Face Anonymizer"
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/$APP_ID"
 BIN_DIR="$HOME/.local/bin"
-LAUNCHER="$BIN_DIR/$APP_ID"
-DESKTOP_FILE="${XDG_DATA_HOME:-$HOME/.local/share}/applications/$APP_ID.desktop"
 CAM_LABEL="Face Anonymizer"
 MODPROBE_CONF="/etc/modprobe.d/$APP_ID.conf"
 MODULES_CONF="/etc/modules-load.d/$APP_ID.conf"
@@ -35,7 +35,7 @@ for arg in "$@"; do
     -y|--yes) ASSUME_YES=1 ;;
     --no-virtualcam) WITH_VCAM=0 ;;
     --allow-root) ALLOW_ROOT=1 ;;
-    -h|--help) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "Onbekende optie: $arg (zie --help)"; exit 1 ;;
   esac
 done
@@ -116,7 +116,8 @@ step "App installeren"
 mkdir -p "$DATA_DIR" "$BIN_DIR"
 # Alleen wat de app nodig heeft; eigen instellingen in $DATA_DIR blijven staan
 # install -m 644: werkt ook als bronbestanden of een eerdere installatie alleen-lezen zijn
-install -m 644 "$SRC_DIR/face_anonymizer.py" "$SRC_DIR/requirements.txt" "$DATA_DIR/"
+install -m 644 "$SRC_DIR/face_anonymizer.py" "$SRC_DIR/photo_anonymizer.py" "$SRC_DIR/face_core.py" \
+  "$SRC_DIR/requirements.txt" "$DATA_DIR/"
 install -d "$DATA_DIR/assets"
 install -m 644 "$SRC_DIR/assets/"*.png "$DATA_DIR/assets/"
 if [ -d "$SRC_DIR/browser-extension" ]; then
@@ -124,6 +125,9 @@ if [ -d "$SRC_DIR/browser-extension" ]; then
   cp -r "$SRC_DIR/browser-extension" "$DATA_DIR/browser-extension"
   rm -rf "$DATA_DIR/browser-extension/test"
   chmod -R u+rwX,go+rX "$DATA_DIR/browser-extension"
+fi
+if [ -d "$SRC_DIR/web" ] && [ -d "$SRC_DIR/browser-extension" ]; then
+  bash "$SRC_DIR/web/build.sh" "$DATA_DIR/web" >/dev/null && chmod -R u+rwX,go+rX "$DATA_DIR/web"
 fi
 ok "Bestanden gekopieerd"
 
@@ -138,14 +142,17 @@ echo "  Python-pakketten installeren (eerste keer duurt dit even)…"
 "$DATA_DIR/venv/bin/python" -m pip install -q -r "$DATA_DIR/requirements.txt" \
   || die "Python-pakketten installeren mislukt. Controleer je internetverbinding."
 ok "Python-omgeving klaar"
+if "$DATA_DIR/venv/bin/python" -m pip install -q pillow-heif >/dev/null 2>&1; then
+  ok "iPhone-foto's (HEIC) ondersteund"
+else
+  warn "HEIC-ondersteuning niet beschikbaar; iPhone-foto's eerst als JPG exporteren."
+fi
 
 # ------------------------------------------------------------- 3. model
 step "Gezichtsmodel"
 if (cd "$DATA_DIR" && "$DATA_DIR/venv/bin/python" - <<'PY'
-import sys
-sys.argv = ["x"]
-from face_anonymizer import AnonymizerWorker
-AnonymizerWorker()._load_yunet(640, 480)
+import face_core
+face_core.create_detector()
 PY
 ) >/dev/null 2>&1; then
   ok "YuNet-model gedownload"
@@ -197,82 +204,101 @@ else
   warn "Overgeslagen"
 fi
 
-# ----------------------------------------------------------- 5. starter
-step "Snelkoppeling"
-cat > "$LAUNCHER" <<EOF
+# ----------------------------------------------------------- 5. starters
+step "Snelkoppelingen"
+DESKTOP_DIR="$(command -v xdg-user-dir >/dev/null && xdg-user-dir DESKTOP 2>/dev/null || echo "$HOME/Desktop")"
+WANT_DESKTOP=0
+if [ -d "$DESKTOP_DIR" ] && [ "$DESKTOP_DIR" != "$HOME" ] && ask "Ook snelkoppelingen op het bureaublad zetten?"; then
+  WANT_DESKTOP=1
+fi
+
+# make_app ID "Naam" script.py icoon.png WMClass "Omschrijving" "Categorieën" "Trefwoorden" virtuele-camera(0/1)
+make_app() {
+  local id="$1" name="$2" script="$3" icon="$4" wmclass="$5" comment="$6" cats="$7" keys="$8" vcam="$9"
+  local launcher="$BIN_DIR/$id"
+  local desktop="${XDG_DATA_HOME:-$HOME/.local/share}/applications/$id.desktop"
+  local vcam_block=""
+  if [ "$vcam" = 1 ]; then
+    # Virtuele camera laden als die er nog niet is (bijv. vlak na de installatie).
+    # pkexec toont een gewoon wachtwoordvenster, net als OBS doet.
+    vcam_block="if modinfo v4l2loopback >/dev/null 2>&1 && ! lsmod | grep -q '^v4l2loopback'; then
+  command -v pkexec >/dev/null && pkexec modprobe v4l2loopback devices=1 video_nr=10 exclusive_caps=1 card_label=\"$CAM_LABEL\" || true
+fi"
+  fi
+  cat > "$launcher" <<LAUNCH
 #!/usr/bin/env bash
-# Starter voor $APP_NAME (gemaakt door install.sh)
+# Starter voor $name (gemaakt door install.sh)
 APP_DIR="$DATA_DIR"
 LOG_DIR="\${XDG_CACHE_HOME:-\$HOME/.cache}/$APP_ID"
-LOG="\$LOG_DIR/$APP_ID.log"
+LOG="\$LOG_DIR/$id.log"
 mkdir -p "\$LOG_DIR"
 
-notify() { command -v notify-send >/dev/null && notify-send -i "\$APP_DIR/assets/icon.png" "$APP_NAME" "\$1"; }
+notify() { command -v notify-send >/dev/null && notify-send -i "\$APP_DIR/assets/$icon" "$name" "\$1"; }
 
-# Maar één keer tegelijk starten (de camera kan maar door één programma gebruikt worden)
-exec 9>"\$LOG_DIR/lock"
+# Maar één keer tegelijk starten
+exec 9>"\$LOG_DIR/$id.lock"
 if ! flock -n 9; then
-  notify "Face Anonymizer draait al."
+  notify "$name draait al."
   exit 0
 fi
 
-# Virtuele camera laden als die er nog niet is (bijv. vlak na de installatie).
-# pkexec toont een gewoon wachtwoordvenster, net als OBS doet.
-if modinfo v4l2loopback >/dev/null 2>&1 && ! lsmod | grep -q '^v4l2loopback'; then
-  command -v pkexec >/dev/null && pkexec modprobe v4l2loopback devices=1 video_nr=10 exclusive_caps=1 card_label="$CAM_LABEL" || true
-fi
+$vcam_block
 
 cd "\$APP_DIR" || exit 1
 { echo "=== \$(date) ==="; } >> "\$LOG"
-"\$APP_DIR/venv/bin/python" "\$APP_DIR/face_anonymizer.py" >> "\$LOG" 2>&1
+"\$APP_DIR/venv/bin/python" "\$APP_DIR/$script" >> "\$LOG" 2>&1
 status=\$?
-if [ \$status -ne 0 ]; then
-  msg="Face Anonymizer is gestopt met een fout.\n\nLaatste regels uit \$LOG:\n\n\$(tail -n 15 "\$LOG")"
+# Stopsignaal (uitloggen, afsluiten) is geen fout; alleen echte fouten melden
+if [ \$status -ne 0 ] && [ \$status -lt 128 ]; then
+  msg="$name is gestopt met een fout.\n\nLaatste regels uit \$LOG:\n\n\$(tail -n 15 "\$LOG")"
   if command -v zenity >/dev/null; then
-    zenity --error --title="$APP_NAME" --width=560 --text="\$msg" 2>/dev/null
+    zenity --error --title="$name" --width=560 --text="\$msg" 2>/dev/null
   else
     notify "Gestopt met een fout. Zie \$LOG"
   fi
 fi
 exit \$status
-EOF
-chmod +x "$LAUNCHER"
-ok "Starter: $LAUNCHER"
+LAUNCH
+  chmod +x "$launcher"
 
-mkdir -p "$(dirname "$DESKTOP_FILE")"
-cat > "$DESKTOP_FILE" <<EOF
+  mkdir -p "$(dirname "$desktop")"
+  cat > "$desktop" <<DESK
 [Desktop Entry]
 Type=Application
-Name=$APP_NAME
+Name=$name
 GenericName=Gezichten anonimiseren
-Comment=Anonimiseer gezichten live voor OBS, Zoom, Meet en livestreams
-Exec=$LAUNCHER
-Icon=$DATA_DIR/assets/icon.png
+Comment=$comment
+Exec=$launcher
+Icon=$DATA_DIR/assets/$icon
 Terminal=false
-Categories=AudioVideo;Video;
-Keywords=webcam;camera;privacy;anoniem;obs;stream;
+Categories=$cats
+Keywords=$keys
 StartupNotify=true
-StartupWMClass=Face-anonymizer
-EOF
-chmod +x "$DESKTOP_FILE"
-command -v update-desktop-database >/dev/null && update-desktop-database -q "$(dirname "$DESKTOP_FILE")" 2>/dev/null || true
-ok "In het app-menu: zoek op \"$APP_NAME\""
-
-DESKTOP_DIR="$(command -v xdg-user-dir >/dev/null && xdg-user-dir DESKTOP 2>/dev/null || echo "$HOME/Desktop")"
-if [ -d "$DESKTOP_DIR" ] && [ "$DESKTOP_DIR" != "$HOME" ]; then
-  if ask "Ook een snelkoppeling op het bureaublad zetten?"; then
-    cp "$DESKTOP_FILE" "$DESKTOP_DIR/$APP_ID.desktop"
-    chmod +x "$DESKTOP_DIR/$APP_ID.desktop"
-    # GNOME: snelkoppeling als vertrouwd markeren, anders moet je eerst "Starten toestaan" kiezen
-    gio set "$DESKTOP_DIR/$APP_ID.desktop" metadata::trusted true 2>/dev/null || true
-    ok "Op het bureaublad gezet"
+StartupWMClass=$wmclass
+DESK
+  chmod +x "$desktop"
+  if [ "$WANT_DESKTOP" = 1 ]; then
+    cp "$desktop" "$DESKTOP_DIR/$id.desktop"
+    chmod +x "$DESKTOP_DIR/$id.desktop"
+    # GNOME: als vertrouwd markeren, anders moet je eerst "Starten toestaan" kiezen
+    gio set "$DESKTOP_DIR/$id.desktop" metadata::trusted true 2>/dev/null || true
   fi
-fi
+  if [ "$WANT_DESKTOP" = 1 ]; then ok "$name: in het app-menu en op het bureaublad"; else ok "$name: in het app-menu"; fi
+}
+
+make_app "$APP_ID" "$APP_NAME" face_anonymizer.py icon.png Face-anonymizer \
+  "Anonimiseer gezichten live voor OBS, Zoom, Meet en livestreams" \
+  "AudioVideo;Video;" "webcam;camera;privacy;anoniem;obs;stream;" 1
+make_app "foto-anonymizer" "Foto Anonymizer" photo_anonymizer.py photo_icon.png Foto-anonymizer \
+  "Maak gezichten op een map vol foto's onherkenbaar" \
+  "Graphics;Photography;" "foto;photo;privacy;anoniem;gezicht;blur;" 0
+command -v update-desktop-database >/dev/null && \
+  update-desktop-database -q "${XDG_DATA_HOME:-$HOME/.local/share}/applications" 2>/dev/null || true
 
 # ------------------------------------------------------------- klaar
 echo
 echo "${G}${B}Klaar!${N}"
-echo "  • Start ${B}$APP_NAME${N} via het app-menu (of de snelkoppeling op je bureaublad)."
+echo "  • Start ${B}$APP_NAME${N} (live) of ${B}Foto Anonymizer${N} (mappen met foto's) via het app-menu."
 case "$VCAM_STATUS" in
   klaar)         echo "  • Virtuele camera: ${G}klaar${N}. Kies \"$CAM_LABEL\" als camera in OBS, Zoom, Meet enz." ;;
   "na herstart") echo "  • Virtuele camera: ${Y}beschikbaar na een herstart${N}." ;;
@@ -282,5 +308,9 @@ if [ -d "$DATA_DIR/browser-extension" ]; then
   echo "  • Browserextensie: laad in chrome://extensions (Ontwikkelaarsmodus → Uitgepakte extensie laden) de map"
   echo "      $DATA_DIR/browser-extension"
   echo "    Na een update via install.sh hoef je daar alleen op ↻ te klikken."
+fi
+if [ -f "$DATA_DIR/web/index.html" ]; then
+  echo "  • Webtool (zelfde functie als Foto Anonymizer, in de browser): $DATA_DIR/web"
+  echo "    Zet die map op een website, of zie de README voor GitHub Pages."
 fi
 case ":$PATH:" in *":$BIN_DIR:"*) ;; *) echo "  • Tip: na opnieuw inloggen kun je ook '$APP_ID' typen in een terminal." ;; esac

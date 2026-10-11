@@ -6,10 +6,12 @@ APP_ID="face-anonymizer"
 DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/$APP_ID"
 DESKTOP_DIR="$(command -v xdg-user-dir >/dev/null && xdg-user-dir DESKTOP 2>/dev/null || echo "$HOME/Desktop")"
 
-echo "Face Anonymizer verwijderen…"
-rm -f "$HOME/.local/bin/$APP_ID"
-rm -f "${XDG_DATA_HOME:-$HOME/.local/share}/applications/$APP_ID.desktop"
-rm -f "$DESKTOP_DIR/$APP_ID.desktop"
+echo "Face Anonymizer en Foto Anonymizer verwijderen…"
+for id in "$APP_ID" foto-anonymizer; do
+  rm -f "$HOME/.local/bin/$id"
+  rm -f "${XDG_DATA_HOME:-$HOME/.local/share}/applications/$id.desktop"
+  rm -f "$DESKTOP_DIR/$id.desktop"
+done
 rm -rf "$DATA_DIR"
 rm -rf "${XDG_CACHE_HOME:-$HOME/.cache}/$APP_ID"
 echo "  ✓ App, starter en snelkoppelingen verwijderd"

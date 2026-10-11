@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.0.0 – Foto Anonymizer
+- **Nieuwe desktop-app** `photo_anonymizer.py`: anonimiseert een hele map foto's, met nalopen en handmatig corrigeren; ook zonder venster te gebruiken
+- **Nieuwe webtool** (`web/`): zelfde functie in de browser, foto's blijven op je computer; download als ZIP
+- Gezichten zoeken op meerdere schalen en in tegels, voor zowel close-ups als publiek ver weg
+- Metadata (GPS, camera) wordt verwijderd; telefoonfoto's worden rechtop gezet; HEIC → JPG
+- Gedeelde kern `face_core.py` (model en maskers) voor alle Python-tools
+- `install.sh` installeert beide apps met elk een eigen snelkoppeling en bouwt de webtool
+- GitHub Pages-workflow publiceert de webtool automatisch
+- Starter meldt geen fout meer bij afsluiten door uitloggen of herstarten
+
 ## 2.2.0
 - **Mirror overlay** in de desktopversie, live aan en uit te zetten (zelfde optie als in de browserextensie)
 

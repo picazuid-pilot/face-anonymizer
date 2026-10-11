@@ -15,13 +15,14 @@ import sys
 import threading
 import time
 import tkinter as tk
-import urllib.request
 from pathlib import Path
 from tkinter import filedialog, ttk
 
 import cv2
 import numpy as np
 from scipy.optimize import linear_sum_assignment
+
+import face_core
 
 try:
     import pyvirtualcam
@@ -35,12 +36,6 @@ except ImportError:
     sys.exit("Pillow ontbreekt. Installeer de afhankelijkheden met: pip install -r requirements.txt")
 
 APP_DIR = Path(__file__).resolve().parent
-YUNET_URLS = [
-    "https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/"
-    "face_detection_yunet_2023mar.onnx",
-    "https://media.githubusercontent.com/media/opencv/opencv_zoo/main/models/face_detection_yunet/"
-    "face_detection_yunet_2023mar.onnx",
-]
 
 MODES = ["Overlay", "Pixelate", "Blur", "Black"]
 DETECT_WIDTHS = {"Full": 0, "1280": 1280, "960": 960, "640": 640}
@@ -123,29 +118,7 @@ class AnonymizerWorker:
         return overlay
 
     def _load_yunet(self, width, height):
-        model_dir = Path.home() / ".cache" / "yunet"
-        model_dir.mkdir(parents=True, exist_ok=True)
-        model_path = model_dir / "face_detection_yunet_2023mar.onnx"
-
-        if not model_path.exists() or model_path.stat().st_size < 100_000:
-            self._status("Downloading YuNet model...")
-            tmp = model_path.with_suffix(".part")
-            errors = []
-            for url in YUNET_URLS:
-                try:
-                    urllib.request.urlretrieve(url, tmp)
-                    # Een Git-LFS-pointer of foutpagina is maar een paar honderd bytes
-                    if tmp.stat().st_size >= 100_000:
-                        tmp.replace(model_path)  # nooit een half/ongeldig model achterlaten
-                        break
-                    errors.append(f"{url}: invalid file")
-                except Exception as e:  # noqa: BLE001
-                    errors.append(f"{url}: {e}")
-            else:
-                tmp.unlink(missing_ok=True)
-                raise RuntimeError("Model download failed. " + " | ".join(errors) +
-                                   f" — download it manually to {model_path}")
-
+        model_path = face_core.ensure_model(self._status)
         detector = cv2.FaceDetectorYN.create(str(model_path), "", (width, height))
         detector.setScoreThreshold(self.confidence_threshold)
         detector.setNMSThreshold(0.3)
