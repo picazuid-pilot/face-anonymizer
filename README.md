@@ -12,6 +12,9 @@ Kies daarna gewoon de virtuele camera als bron in OBS, Zoom, Teams, Google Meet,
 
 https://github.com/user-attachments/assets/024daca7-4c85-42a7-befd-ff649e81f6b3
 
+<iframe width="560" height="315" src="https://www.youtube.com/embed/MiJiowpUm8I?si=RxVR5XEk06POMH4S" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+
+
 ## Welke tool heb je nodig?
 
 | Je wilt… | Gebruik |
