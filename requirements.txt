@@ -3,3 +3,4 @@ numpy
 scipy
 Pillow
 pyvirtualcam>=0.11
+av>=14

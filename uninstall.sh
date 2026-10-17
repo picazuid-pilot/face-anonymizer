@@ -6,8 +6,8 @@ APP_ID="face-anonymizer"
 DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/$APP_ID"
 DESKTOP_DIR="$(command -v xdg-user-dir >/dev/null && xdg-user-dir DESKTOP 2>/dev/null || echo "$HOME/Desktop")"
 
-echo "Face Anonymizer en Foto Anonymizer verwijderen…"
-for id in "$APP_ID" foto-anonymizer; do
+echo "Face Anonymizer, Foto Anonymizer en Face Anonymizer for AV verwijderen…"
+for id in "$APP_ID" foto-anonymizer face-anonymizer-av; do
   rm -f "$HOME/.local/bin/$id"
   rm -f "${XDG_DATA_HOME:-$HOME/.local/share}/applications/$id.desktop"
   rm -f "$DESKTOP_DIR/$id.desktop"

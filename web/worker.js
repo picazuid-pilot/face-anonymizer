@@ -21,6 +21,33 @@ const THUMB = 480;
 let session = null;
 let overlay = null;
 
+/** Knipt een doorzichtige rand weg, zodat het logo het hele maskervlak vult. */
+async function trimTransparent(bitmap) {
+  const w = bitmap.width, h = bitmap.height;
+  const scale = Math.min(1, 512 / Math.max(w, h)); // zoeken op een kleine versie is snel genoeg
+  const sw = Math.max(1, Math.round(w * scale)), sh = Math.max(1, Math.round(h * scale));
+  const c = new OffscreenCanvas(sw, sh);
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(bitmap, 0, 0, sw, sh);
+  const a = ctx.getImageData(0, 0, sw, sh).data;
+  let x0 = sw, y0 = sh, x1 = -1, y1 = -1;
+  for (let y = 0; y < sh; y++) {
+    for (let x = 0; x < sw; x++) {
+      if (a[(y * sw + x) * 4 + 3] > 8) {
+        if (x < x0) x0 = x; if (x > x1) x1 = x;
+        if (y < y0) y0 = y; if (y > y1) y1 = y;
+      }
+    }
+  }
+  if (x1 < 0 || (x0 === 0 && y0 === 0 && x1 === sw - 1 && y1 === sh - 1)) return bitmap;
+  const sx = Math.floor(x0 / scale), sy = Math.floor(y0 / scale);
+  const ex = Math.min(w, Math.ceil((x1 + 1) / scale)), ey = Math.min(h, Math.ceil((y1 + 1) / scale));
+  const trimmed = await createImageBitmap(bitmap, sx, sy, ex - sx, ey - sy);
+  bitmap.close();
+  return trimmed;
+}
+
+
 // ------------------------------------------------------------------ detectie
 async function runModel(source, sx, sy, sw, sh, scale) {
   const cw = Math.max(1, Math.round(sw * scale)), ch = Math.max(1, Math.round(sh * scale));
@@ -181,7 +208,7 @@ self.onmessage = async (e) => {
       session = await ort.InferenceSession.create('models/yunet.onnx', { executionProviders: ['wasm'] });
       self.postMessage({ type: 'ready' });
     } else if (m.type === 'overlay') {
-      overlay = m.blob ? await createImageBitmap(m.blob) : null;
+      overlay = m.blob ? await trimTransparent(await createImageBitmap(m.blob)) : null;
     } else if (m.type === 'process' || m.type === 'render') {
       const bitmap = await decode(m.file);
       const faces = m.type === 'process' ? await detect(bitmap, m.settings.accuracy, m.settings.confidence) : m.faces;

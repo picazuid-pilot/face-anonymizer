@@ -8,7 +8,8 @@
 #   4. De virtuele camera instellen zodat hij ook na een herstart beschikbaar is
 #   5. Een snelkoppeling maken in het app-menu en op het bureaublad
 #
-# Installeert twee apps: Face Anonymizer (live webcam) en Foto Anonymizer (mappen met foto's).
+# Installeert drie apps: Face Anonymizer (live webcam), Foto Anonymizer (mappen met foto's)
+# en Face Anonymizer for AV (video's, beeldreeksen en foto's).
 #
 # Gebruik:   ./install.sh            (vraagt om bevestiging waar nodig)
 #            ./install.sh --yes      (alles automatisch)
@@ -35,7 +36,7 @@ for arg in "$@"; do
     -y|--yes) ASSUME_YES=1 ;;
     --no-virtualcam) WITH_VCAM=0 ;;
     --allow-root) ALLOW_ROOT=1 ;;
-    -h|--help) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "Onbekende optie: $arg (zie --help)"; exit 1 ;;
   esac
 done
@@ -117,7 +118,7 @@ mkdir -p "$DATA_DIR" "$BIN_DIR"
 # Alleen wat de app nodig heeft; eigen instellingen in $DATA_DIR blijven staan
 # install -m 644: werkt ook als bronbestanden of een eerdere installatie alleen-lezen zijn
 install -m 644 "$SRC_DIR/face_anonymizer.py" "$SRC_DIR/photo_anonymizer.py" "$SRC_DIR/face_core.py" \
-  "$SRC_DIR/requirements.txt" "$DATA_DIR/"
+  "$SRC_DIR/av_anonymizer.py" "$SRC_DIR/av_core.py" "$SRC_DIR/requirements.txt" "$DATA_DIR/"
 install -d "$DATA_DIR/assets"
 install -m 644 "$SRC_DIR/assets/"*.png "$DATA_DIR/assets/"
 if [ -d "$SRC_DIR/browser-extension" ]; then
@@ -292,13 +293,17 @@ make_app "$APP_ID" "$APP_NAME" face_anonymizer.py icon.png Face-anonymizer \
 make_app "foto-anonymizer" "Foto Anonymizer" photo_anonymizer.py photo_icon.png Foto-anonymizer \
   "Maak gezichten op een map vol foto's onherkenbaar" \
   "Graphics;Photography;" "foto;photo;privacy;anoniem;gezicht;blur;" 0
+make_app "face-anonymizer-av" "Face Anonymizer for AV" av_anonymizer.py av_icon.png Face-anonymizer-av \
+  "Anonimiseer gezichten in video's, beeldreeksen en foto's (met geluid, zonder metadata)" \
+  "AudioVideo;Video;" "video;film;foto;reeks;privacy;anoniem;gezicht;blur;" 0
 command -v update-desktop-database >/dev/null && \
   update-desktop-database -q "${XDG_DATA_HOME:-$HOME/.local/share}/applications" 2>/dev/null || true
 
 # ------------------------------------------------------------- klaar
 echo
 echo "${G}${B}Klaar!${N}"
-echo "  • Start ${B}$APP_NAME${N} (live) of ${B}Foto Anonymizer${N} (mappen met foto's) via het app-menu."
+echo "  • In het app-menu: ${B}$APP_NAME${N} (live), ${B}Foto Anonymizer${N} (mappen met foto's)"
+echo "    en ${B}Face Anonymizer for AV${N} (video's, beeldreeksen en foto's)."
 case "$VCAM_STATUS" in
   klaar)         echo "  • Virtuele camera: ${G}klaar${N}. Kies \"$CAM_LABEL\" als camera in OBS, Zoom, Meet enz." ;;
   "na herstart") echo "  • Virtuele camera: ${Y}beschikbaar na een herstart${N}." ;;

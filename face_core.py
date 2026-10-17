@@ -176,6 +176,17 @@ def detect_faces(detector, img, accuracy="normal", min_score=0.5, min_size=0):
 
 
 # ------------------------------------------------------------------ maskers
+def trim_transparent(overlay, threshold=8):
+    """Knipt een doorzichtige rand rond een overlay weg, zodat het logo het hele
+    maskervlak vult (een rand van 7% rondom maakt het afgedekte vlak ~15% kleiner)."""
+    if overlay is None or overlay.ndim != 3 or overlay.shape[2] != 4:
+        return overlay
+    ys, xs = np.where(overlay[:, :, 3] > threshold)
+    if len(xs) == 0:
+        return overlay
+    return np.ascontiguousarray(overlay[ys.min():ys.max() + 1, xs.min():xs.max() + 1])
+
+
 class MaskRenderer:
     """Tekent maskers op een BGR-beeld (in place)."""
 
@@ -200,7 +211,7 @@ class MaskRenderer:
                 overlay = cv2.cvtColor(overlay, cv2.COLOR_GRAY2BGRA)
             elif overlay.shape[2] == 3:
                 overlay = cv2.cvtColor(overlay, cv2.COLOR_BGR2BGRA)
-            self.overlay = overlay
+            self.overlay = trim_transparent(overlay)
         self._cache = {}
 
     def mask_box(self, face):

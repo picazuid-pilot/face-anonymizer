@@ -28,8 +28,9 @@ https://github.com/user-attachments/assets/024daca7-4c85-42a7-befd-ff649e81f6b3
 | Hetzelfde, maar alleen in Meet, Zoom of Teams in de browser | **[Browserextensie](browser-extension/)** |
 | Een map vol foto's anonimiseren op je eigen computer | **[Foto Anonymizer](#-foto-anonymizer)** (desktop-app) |
 | Foto's anonimiseren zonder iets te installeren | **[Foto Anonymizer webtool](#webtool)** |
+| Opgeslagen video's, beeldreeksen (genummerde beelden) of losse foto's anonimiseren | **[Face Anonymizer for AV](#-face-anonymizer-for-av)** (desktop-app) |
 
-Alle tools gebruiken hetzelfde gezichtsmodel en werken volledig lokaal: er gaan geen beelden naar een server.
+Alle tools gebruiken hetzelfde gezichtsmodel en werken volledig lokaal: er gaan geen beelden of video's naar een server.
 
 ## Installatie
 
@@ -161,6 +162,59 @@ iPhone-foto's (HEIC) kan de browser niet openen; gebruik daarvoor de desktop-app
 | iPhone-foto's (HEIC) | Ja | Nee |
 | Mappenstructuur behouden | Ja | Ja (bij een map slepen of kiezen) |
 | Snelheid | Sneller | Iets trager |
+
+## 🎬 Face Anonymizer for AV
+
+Anonimiseert gezichten in **opgeslagen video's**, **beeldreeksen** (bijv. `shot_0001.png`, `shot_0002.png` …) en **losse foto's**, voor podcasts, interviews en opnames van bijeenkomsten.
+
+- **Originelen blijven altijd bewaard**: de resultaten krijgen `_anoniem` in de naam en komen in een aparte map (standaard `anoniem` naast je bestanden)
+- **Geluid blijft behouden**; de video wordt opnieuw opgeslagen als MP4 (H.264)
+- **Metadata wordt verwijderd**: GPS-locatie, titel en toestel gaan niet mee
+- **Telefoonvideo's** worden rechtop gezet
+- **Logo, pixels, blur of zwart vlak**, ook overlay spiegelen, net als bij de andere tools
+
+### Waarom betrouwbaarder dan live
+
+Live weet de tool alleen wat er al gebeurd is. Bij een opgeslagen video kent hij ook de beelden **erna**:
+
+1. Eerst worden in **alle** beelden de gezichten gezocht.
+2. Daarna worden ze over de tijd gevolgd. Wordt een gezicht even gemist (opzij kijken, hand voor het gezicht, bewegingsonscherpte), dan vult de tool dat stuk op langs de baan tussen ervoor en erna. Het masker wordt daar iets groter, omdat de positie minder zeker is.
+3. Elk masker verschijnt net iets vóór het gezicht in beeld komt en blijft net iets langer staan.
+4. Losse twijfelachtige treffers (bijv. een poster die één beeld lang op een gezicht lijkt) vallen weg.
+
+### Nalopen
+
+Dubbelklik na het verwerken op een video in de lijst:
+
+- **Bladeren** met de schuifregelaar of de pijltjestoetsen
+- **Oranje kaders** en de oranje stukjes op de tijdlijn zijn **opgevulde** stukken: daar is het gezicht niet zelf gevonden. Met *Volgend opgevuld stuk* spring je er direct naartoe om ze te controleren
+- **Klik op een masker** om het in de hele video weg te halen (bijv. een vals masker op een poster)
+- **Sleep over een gemist gezicht** om een masker toe te voegen, vanaf dat beeld voor een in te stellen aantal seconden
+- **Ongedaan maken** en daarna **Opnieuw opslaan**
+
+### Gebruik
+
+Na `./install.sh` staat **Face Anonymizer for AV** in je app-menu. Voeg bestanden of een map toe, kies de afdekking en druk op **Start**. Een map met genummerde beelden wordt automatisch als beeldreeks herkend; de uitvoer krijgt dezelfde bestandsnamen.
+
+Zonder venster:
+
+```bash
+python av_anonymizer.py opname.mp4                               # → anoniem/opname_anoniem.mp4
+python av_anonymizer.py ~/Opnames ~/Shots/scene1 -o ~/Anoniem --speed thorough
+python av_anonymizer.py --help
+```
+
+| Instelling | Uitleg |
+|---|---|
+| Snel / Normaal / Grondig | *Snel* zoekt in elk 2e beeld en vult ertussen aan. *Grondig* zoekt ook naar kleine gezichten ver weg, maar is een stuk trager |
+| Zekerheid | Hoger = minder valse maskers |
+| Missers opvullen | Hoe lang (standaard 1,5 s) een masker blijft staan als een gezicht even niet gevonden wordt |
+
+**Snelheid:** reken op ongeveer 2 tot 4 keer de lengte van de video op een gewone laptop (*Normaal*, 1080p). Een opname van 10 minuten duurt dus zo'n 20 tot 40 minuten. *Snel* scheelt ongeveer een derde.
+
+**Goed om te weten:**
+- Beeldreeksen worden als 8-bit opgeslagen; 16-bit PNG/TIFF uit compositing-software verliest dus kleurdiepte.
+- Een gezicht dat lang én snel uit beeld beweegt (meer dan ~1 seconde niet te zien terwijl het van richting verandert) kan het opvullen niet precies volgen. Die stukken staan oranje bij het nalopen.
 
 ## Browserextensie (Chrome/Edge)
 

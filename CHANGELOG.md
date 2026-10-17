@@ -1,5 +1,13 @@
 # Changelog
 
+## 4.0.0 – Face Anonymizer for AV
+- **Nieuwe app** `av_anonymizer.py` voor opgeslagen video's, beeldreeksen en losse foto's, met eigen snelkoppeling
+- Gezichten worden over de tijd gevolgd: missers worden opgevuld langs de bewegingsbaan, met marge voor en na; losse valse treffers vallen weg
+- Geluid blijft behouden; metadata (GPS, titel, toestel) wordt verwijderd; telefoonvideo's worden rechtop gezet
+- Nalopen: door de video bladeren, opgevulde stukken controleren, maskers weghalen of toevoegen, ongedaan maken, opnieuw opslaan
+- Ook zonder venster te gebruiken (opdrachtregel)
+- **Alle tools:** een doorzichtige rand rond de overlay wordt weggeknipt, zodat het logo het hele maskervlak bedekt (het standaardlogo dekte daardoor ~15% te weinig af)
+
 ## 3.0.0 – Foto Anonymizer
 - **Nieuwe desktop-app** `photo_anonymizer.py`: anonimiseert een hele map foto's, met nalopen en handmatig corrigeren; ook zonder venster te gebruiken
 - **Nieuwe webtool** (`web/`): zelfde functie in de browser, foto's blijven op je computer; download als ZIP

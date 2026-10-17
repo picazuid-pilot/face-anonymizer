@@ -114,6 +114,7 @@ class AnonymizerWorker:
             overlay = cv2.cvtColor(overlay, cv2.COLOR_GRAY2BGRA)
         elif overlay.shape[2] == 3:
             overlay = cv2.cvtColor(overlay, cv2.COLOR_BGR2BGRA)
+        overlay = face_core.trim_transparent(overlay)  # logo vult het hele maskervlak
         print(f"Overlay loaded: {overlay.shape}")
         return overlay
 
