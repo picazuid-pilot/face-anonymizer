@@ -120,7 +120,7 @@ ls /dev/video*                   # /dev/video10 hoort erbij te staan
 | Oorzaak | Oplossing |
 |---|---|
 | Driver niet geïnstalleerd (nieuwe computer, of bij de installatie "nee" gekozen) | `./install.sh` opnieuw draaien, of `sudo apt install v4l2loopback-dkms linux-headers-$(uname -r)` |
-| **Secure Boot** blokkeert de driver (`Key was rejected by service`) | `sudo mokutil --import /var/lib/shim-signed/mok/MOK.der`, kies een eenmalig wachtwoord, herstart en kies in het blauwe scherm **Enroll MOK → Continue → Yes** en vul dat wachtwoord in. Daarna `./install.sh` nog eens |
+| **Secure Boot** blokkeert de driver (`Key was rejected by service`) | `sudo mokutil --revoke-import` en dan `sudo mokutil --import /var/lib/shim-signed/mok/MOK.der`, kies een eenmalig wachtwoord en herstart. Druk in het blauwe scherm *Perform MOK management* **direct op een toets** (het verdwijnt na 10 seconden) en kies **Enroll MOK → Continue → Yes**, wachtwoord, **Reboot**. `./install.sh` doet dit ook voor je |
 | Na een kernelupdate werkt het niet meer | `sudo apt install linux-headers-$(uname -r)` en `sudo dpkg-reconfigure v4l2loopback-dkms` |
 | Driver geladen, maar niet zichtbaar in Zoom | Zoom pas starten (of helemaal afsluiten en opnieuw openen) **nadat** de virtuele camera aanstaat en beeld geeft. Zoom zoekt alleen bij het opstarten naar camera's |
 

@@ -192,7 +192,19 @@ elif ask "Virtuele camera installeren en bij het opstarten automatisch laden?"; 
       VCAM_STATUS="na herstart"
       if command -v mokutil >/dev/null && mokutil --sb-state 2>/dev/null | grep -qi enabled; then
         warn "Secure Boot staat aan: de driver moet eenmalig goedgekeurd worden."
-        warn "Herstart, kies in het blauwe MOK-scherm 'Enroll MOK' en voer het wachtwoord in dat je net instelde."
+        MOK_DER=/var/lib/shim-signed/mok/MOK.der
+        if [ -f "$MOK_DER" ] && ! mokutil --test-key "$MOK_DER" 2>/dev/null | grep -qi "already enrolled"; then
+          # Een eventueel eerder (onbekend) wachtwoord vervangen door een dat je nu zelf kiest.
+          $SUDO mokutil --revoke-import >/dev/null 2>&1 || true
+          echo "  Kies nu een eenmalig wachtwoord (bijv. 12345678). Je hebt het zo meteen één keer nodig na de herstart."
+          if $SUDO mokutil --import "$MOK_DER"; then
+            ok "Goedkeuring klaargezet"
+          else
+            warn "Klaarzetten mislukt; voer later uit: sudo mokutil --import $MOK_DER"
+          fi
+        fi
+        warn "Herstart nu. Druk in het blauwe scherm 'Perform MOK management' direct op een toets"
+        warn "(het verdwijnt na 10 seconden) en kies: Enroll MOK → Continue → Yes → wachtwoord → Reboot."
       else
         warn "Driver kon nu niet geladen worden; probeer het na een herstart."
       fi
