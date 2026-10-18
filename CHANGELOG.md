@@ -1,5 +1,9 @@
 # Changelog
 
+## 4.0.1
+- Live-app: is de virtuele-cameradriver niet geladen, dan laadt de app hem zelf (met wachtwoordvenster) en probeert het opnieuw. Lukt het niet, dan zegt de statusregel waarom: driver niet geïnstalleerd, Secure Boot, geannuleerd of in gebruik
+- README: *Problemen oplossen: virtuele camera*
+
 ## 4.0.0 – Face Anonymizer for AV
 - **Nieuwe app** `av_anonymizer.py` voor opgeslagen video's, beeldreeksen en losse foto's, met eigen snelkoppeling
 - Gezichten worden over de tijd gevolgd: missers worden opgevuld langs de bewegingsbaan, met marge voor en na; losse valse treffers vallen weg

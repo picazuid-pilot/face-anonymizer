@@ -11,6 +11,8 @@ zodat je het in OBS, Zoom, Teams, YouTube enz. als camerabron kunt kiezen.
 """
 
 import queue
+import shutil
+import subprocess
 import sys
 import threading
 import time
@@ -23,6 +25,56 @@ import numpy as np
 from scipy.optimize import linear_sum_assignment
 
 import face_core
+
+VCAM_LABEL = "Face Anonymizer"
+VCAM_OPTIONS = ["devices=1", "video_nr=10", "exclusive_caps=1", f"card_label={VCAM_LABEL}"]
+
+
+def _run(cmd, timeout=120):
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        return r.returncode, (r.stdout + r.stderr).strip()
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return 1, str(e)
+
+
+def secure_boot_enabled():
+    if not shutil.which("mokutil"):
+        return False
+    _, out = _run(["mokutil", "--sb-state"], timeout=10)
+    return "enabled" in out.lower()
+
+
+def repair_v4l2loopback():
+    """Probeert de virtuele-cameradriver te laden. Geeft (gelukt, uitleg) terug."""
+    code, _ = _run(["modinfo", "v4l2loopback"], timeout=10)
+    if code != 0:
+        return False, ("The virtual camera driver (v4l2loopback) is not installed for this kernel. "
+                       "Run ./install.sh again, or: sudo apt install v4l2loopback-dkms "
+                       "linux-headers-$(uname -r)")
+    if not shutil.which("pkexec"):
+        return False, ("Driver is installed but not loaded. Run: sudo modprobe v4l2loopback "
+                       + " ".join(VCAM_OPTIONS[:3]) + f' card_label="{VCAM_LABEL}"')
+    _, lsmod = _run(["lsmod"], timeout=10)
+    loaded = any(line.split()[:1] == ["v4l2loopback"] for line in lsmod.splitlines())
+    # Geladen zonder bruikbaar apparaat (bijv. devices=0): eerst ontladen, dan goed laden.
+    script = ("modprobe -r v4l2loopback 2>/dev/null; " if loaded else "") + \
+        "modprobe v4l2loopback " + " ".join(VCAM_OPTIONS[:3]) + f" card_label='{VCAM_LABEL}'"
+    code, out = _run(["pkexec", "sh", "-c", script])
+    if code == 0:
+        return True, ""
+    if code in (126, 127) and "rejected" not in out.lower():
+        return False, "Password prompt was cancelled. Turn the virtual camera off and on to try again."
+    if "key was rejected" in out.lower() or "required key not available" in out.lower() \
+            or secure_boot_enabled():
+        return False, ("Secure Boot blocks the virtual camera driver. Run: sudo mokutil --import "
+                       "/var/lib/shim-signed/mok/MOK.der, choose a password, reboot and pick "
+                       "'Enroll MOK'. See README → Problemen oplossen.")
+    if "in use" in out.lower():
+        return False, ("The virtual camera is in use by another program (OBS?). Close it and "
+                       "turn the virtual camera off and on.")
+    return False, f"Could not load v4l2loopback: {out or 'unknown error'}"
+
 
 try:
     import pyvirtualcam
@@ -136,6 +188,7 @@ class AnonymizerWorker:
                 setattr(self, attr, params[key])
         if not self.enable_virtual_cam:
             self._vcam_failed = False  # opnieuw proberen bij volgende inschakeling
+            self._vcam_repaired = False
         if self.detector is not None:
             self.detector.setScoreThreshold(self.confidence_threshold)
 
@@ -155,6 +208,18 @@ class AnonymizerWorker:
                 return
             except Exception as e:  # noqa: BLE001 - pyvirtualcam gooit diverse fouten
                 last_error = e
+        if sys.platform.startswith("linux") and not getattr(self, "_vcam_repaired", False) \
+                and "v4l2" in str(last_error).lower():
+            self._vcam_repaired = True  # maximaal één poging per sessie
+            self._status("Virtual camera driver not loaded – asking for your password to load it…",
+                         "error_soft")
+            ok, why = repair_v4l2loopback()
+            if ok:
+                time.sleep(0.5)  # udev heeft even nodig om /dev/video10 aan te maken
+                return self._open_virtual_cam(width, height, fps)
+            self._vcam_failed = True
+            self._status(f"Virtual camera: {why}", "error_soft")
+            return
         self._vcam_failed = True
         self._status(f"Virtual camera error: {last_error}", "error_soft")
 

@@ -106,6 +106,26 @@ Standaard wordt `assets/overlay.png` als overlay geladen. Met **📁 Select PNG*
 
 **Waarom hoge confidence + lage persistence zo goed werkt:** bij lage confidence ontstaan af en toe valse detecties (een lamp, een poster), en met hoge persistence blijven die maskers lang hangen. *Smart persistence* lost precies dat op: losse valse detecties verdwijnen snel, terwijl echte gezichten die al een tijd gevolgd worden wél lang afgedekt blijven. Je kunt de persistence daardoor weer wat hoger zetten (bijv. 20–30) zonder rommel, wat veiliger is als iemand even wegdraait. Een kwijtgeraakt gezicht krijgt bovendien een masker dat langzaam groeit, zodat het nog bedekt is als de persoon beweegt.
 
+### Problemen oplossen: virtuele camera (Linux)
+
+**Melding "No v4l2 loopback device found"** of **"Face Anonymizer" staat niet in de cameralijst van Zoom**: de driver voor de virtuele camera is niet geladen. De app probeert dit zelf op te lossen en vraagt daarvoor je wachtwoord. Lukt dat niet, dan staat in de statusregel waarom. Zelf nagaan:
+
+```bash
+modinfo v4l2loopback | head -3   # foutmelding = driver niet geïnstalleerd
+lsmod | grep v4l2loopback        # leeg = niet geladen
+mokutil --sb-state               # "SecureBoot enabled" = zie hieronder
+ls /dev/video*                   # /dev/video10 hoort erbij te staan
+```
+
+| Oorzaak | Oplossing |
+|---|---|
+| Driver niet geïnstalleerd (nieuwe computer, of bij de installatie "nee" gekozen) | `./install.sh` opnieuw draaien, of `sudo apt install v4l2loopback-dkms linux-headers-$(uname -r)` |
+| **Secure Boot** blokkeert de driver (`Key was rejected by service`) | `sudo mokutil --import /var/lib/shim-signed/mok/MOK.der`, kies een eenmalig wachtwoord, herstart en kies in het blauwe scherm **Enroll MOK → Continue → Yes** en vul dat wachtwoord in. Daarna `./install.sh` nog eens |
+| Na een kernelupdate werkt het niet meer | `sudo apt install linux-headers-$(uname -r)` en `sudo dpkg-reconfigure v4l2loopback-dkms` |
+| Driver geladen, maar niet zichtbaar in Zoom | Zoom pas starten (of helemaal afsluiten en opnieuw openen) **nadat** de virtuele camera aanstaat en beeld geeft. Zoom zoekt alleen bij het opstarten naar camera's |
+
+Met de hand laden: `sudo modprobe v4l2loopback devices=1 video_nr=10 exclusive_caps=1 card_label="Face Anonymizer"`
+
 ## Privacy en betrouwbaarheid
 
 Geen enkele gezichtsdetector is 100% betrouwbaar. Profielen, handen voor het gezicht, sterk tegenlicht en hele kleine gezichten kunnen gemist worden. Test daarom vooraf in de echte ruimte met het echte licht, en overweeg bij gevoelige events extra maatregelen: camerastandpunt achter het publiek, een iets grotere *Scale*, of in OBS een vaste vertraging zodat je kunt ingrijpen.
