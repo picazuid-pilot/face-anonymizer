@@ -1,5 +1,10 @@
 # Changelog
 
+## 4.5.0 – Licentie en F-Droid
+- **Licentie: GPL-3.0-or-later** (`LICENSE`); onderdelen van derden in `THIRD_PARTY_NOTICES.md`
+- Android-app voorbereid op F-Droid: ONNX Runtime van npm in plaats van uit de repo, vaste versie 1.0.0 (versionCode 100), catalogusgegevens en schermafbeeldingen in `fastlane/`, concept-bouwrecept en stappenplan in `android-app/FDROID.md`
+- `tools/make_dynamic_yunet.py`: maakt het gezichtsmodel van de browsertools byte-voor-byte na uit het officiële OpenCV-model
+
 ## 4.4.0
 - **Beschermende blur** ook in de live Face Anonymizer (*Protective blur*) en de browserextensie 1.2.0 (*Beschermende blur*): heel beeld vaag zolang er geen gezicht gevonden wordt. Daar standaard uit
 

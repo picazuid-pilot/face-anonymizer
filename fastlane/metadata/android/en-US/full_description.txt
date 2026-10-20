@@ -1,0 +1,19 @@
+FA Camera (Face Anonymizer Camera) hides faces while you film or take photos, so there is nothing left to edit afterwards. Useful for recordings of meetings, interviews or events where people need to stay anonymous.
+
+<b>Features</b>
+<ul>
+<li>Cover faces with your own logo (PNG), blur, pixels or a black square</li>
+<li>What you see is what is saved: videos are recorded from the processed image. The unprocessed image is never stored</li>
+<li>Fail-safe: while face detection is loading or stalls, the whole image is blurred</li>
+<li>Protective blur (shield): blurs everything while no face is found. Turn it off for photos without people, such as an animal or nature</li>
+<li>Photos get an extra thorough search when taken, including smaller faces further away</li>
+<li>Front and back camera, video with or without sound</li>
+<li>Saves to your gallery (FA Camera folder) and shares via the standard share menu</li>
+</ul>
+
+<b>Privacy</b>
+Everything happens on your phone. The app does not connect to the internet, needs no account and contains no ads or trackers.
+
+Face detection uses the open YuNet model from OpenCV via ONNX Runtime. Always check the result before sharing: no face detection is perfect.
+
+The app interface is in Dutch. Part of the open-source Face Anonymizer project, which also includes desktop apps for live streams, photos and videos.

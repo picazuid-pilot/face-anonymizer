@@ -1,0 +1,19 @@
+FA Camera (Face Anonymizer Camera) dekt gezichten al af terwijl je filmt of fotografeert. Zo hoef je achteraf niets meer na te bewerken, bijvoorbeeld bij opnames van bijeenkomsten, interviews of evenementen waar mensen anoniem moeten blijven.
+
+<b>Functies</b>
+<ul>
+<li>Gezichten afdekken met je eigen logo (PNG), blur, pixels of een zwart vlak</li>
+<li>Wat je ziet, wordt opgeslagen: video's worden opgenomen vanaf het bewerkte beeld. Het onbewerkte beeld wordt nergens bewaard</li>
+<li>Bij twijfel dicht: zolang de gezichtsherkenning laadt of hapert, is het hele beeld vervaagd</li>
+<li>Beschermende blur (schildje): zolang er geen gezicht gevonden wordt, is alles vaag. Uit te zetten voor foto's zonder mensen, zoals een dier of natuur</li>
+<li>Foto's worden bij het maken extra grondig doorzocht, ook op kleinere gezichten verderop</li>
+<li>Voor- en achtercamera, video met of zonder geluid</li>
+<li>Bewaart in je galerij (map FA Camera) en deelt via het gewone deelmenu</li>
+</ul>
+
+<b>Privacy</b>
+Alles gebeurt op je telefoon. De app maakt geen verbinding met internet, heeft geen account nodig en bevat geen advertenties of trackers.
+
+Gezichtsherkenning met het open YuNet-model van OpenCV, via ONNX Runtime. Controleer het resultaat altijd zelf voordat je beelden deelt: geen enkele gezichtsherkenning is perfect.
+
+De app is in het Nederlands. Onderdeel van het open-sourceproject Face Anonymizer, met ook desktop-apps voor livestreams, foto's en video's.

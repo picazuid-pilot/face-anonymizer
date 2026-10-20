@@ -300,4 +300,10 @@ Wil je dat je eigen logo overal de standaard is, vervang dan `assets/overlay.png
 
 ## Licentie
 
-Nog te bepalen.
+Copyright © 2026 picazuid-pilot en bijdragers.
+
+Face Anonymizer is vrije software: je mag het verspreiden en aanpassen onder de voorwaarden van de **GNU General Public License versie 3** of (naar keuze) een latere versie, zoals gepubliceerd door de Free Software Foundation. Zie [LICENSE](LICENSE).
+
+Het wordt verspreid in de hoop dat het nuttig is, maar **zonder enige garantie**. Controleer het resultaat altijd zelf voordat je beelden deelt.
+
+Gebruikte onderdelen van anderen (gezichtsmodel, ONNX Runtime, Capacitor e.d.) en hun licenties: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

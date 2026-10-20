@@ -60,6 +60,10 @@ Elke Android-app moet ondertekend zijn, en een update moet met **dezelfde sleute
 
   Bewaar `fa-camera.keystore` veilig en zet hem nooit in de repo. Na het wisselen van sleutel moet de app één keer verwijderd en opnieuw geïnstalleerd worden.
 
+## F-Droid
+
+De app is vrije software (GPL-3.0-or-later) en klaar om aan te melden bij F-Droid. Wat er nog moet gebeuren: [FDROID.md](FDROID.md).
+
 ## Play Store
 
 Kan later: een ontwikkelaarsaccount kost eenmalig $25. Google vraagt dan een `.aab`-bestand (`./gradlew bundleRelease`), een eigen sleutel (zie hierboven), een privacyverklaring en schermafbeeldingen.

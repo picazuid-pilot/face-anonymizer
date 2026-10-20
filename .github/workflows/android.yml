@@ -65,7 +65,7 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon --stacktrace \
-            -PversionCode=${{ github.run_number }} -PversionName=1.0.${{ github.run_number }}
+            -PciBuildNumber=${{ github.run_number }}
           cp app/build/outputs/apk/release/app-release.apk "$GITHUB_WORKSPACE/fa-camera.apk"
           ls -la "$GITHUB_WORKSPACE/fa-camera.apk"
 
@@ -78,7 +78,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          NOTES="FA Camera voor Android, versie 1.0.${{ github.run_number }} (commit ${GITHUB_SHA::7}).
+          NOTES="FA Camera voor Android, testbuild ${{ github.run_number }} (commit ${GITHUB_SHA::7}). Licentie: GPL-3.0-or-later.
 
           Installeren: open op je telefoon https://github.com/${{ github.repository }}/releases/download/android/fa-camera.apk en sta installeren toe. Uitleg: zie android-app/README.md."
           if ! gh release view android >/dev/null 2>&1; then

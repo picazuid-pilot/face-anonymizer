@@ -13,7 +13,14 @@ for f in index.html camera.css camera.js tracker.js detector-worker.js; do
     "$ROOT/camera/$f" > "$OUT/$f"
 done
 cp "$ROOT"/camera/icons/*.png "$OUT/icons/"
-cp "$ROOT"/browser-extension/lib/{ort.wasm.min.js,ort-wasm-simd-threaded.mjs,ort-wasm-simd-threaded.wasm} "$OUT/lib/"
+# ONNX Runtime komt van npm (versie vast in package-lock.json), niet uit de repo:
+# zo is de herkomst controleerbaar (F-Droid). Eerst `npm ci` draaien.
+ORT="$HERE/node_modules/onnxruntime-web/dist"
+if [ ! -f "$ORT/ort-wasm-simd-threaded.wasm" ]; then
+  echo "Fout: onnxruntime-web ontbreekt. Voer eerst 'npm ci' uit in android-app/." >&2
+  exit 1
+fi
+cp "$ORT"/{ort.wasm.min.js,ort-wasm-simd-threaded.mjs,ort-wasm-simd-threaded.wasm} "$OUT/lib/"
 cp "$ROOT/browser-extension/src/yunet.js" "$OUT/lib/"
 cp "$ROOT/browser-extension/models/yunet.onnx" "$OUT/models/"
 cp "$ROOT/assets/overlay.png" "$OUT/assets/"

@@ -1,0 +1,1 @@
+Eerste versie: foto en video met afgedekte gezichten (logo, blur, pixels, zwart), beschermende blur, bewaren in de galerij en delen.

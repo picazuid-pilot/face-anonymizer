@@ -7,9 +7,9 @@ android {
         applicationId "io.github.picazuidpilot.facecamera"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        // GitHub Actions geeft elke build een hoger nummer, zodat updates over de oude versie heen installeren
-        versionCode((project.findProperty('versionCode') ?: '1') as Integer)
-        versionName((project.findProperty('versionName') ?: '1.0') as String)
+        // Versie van de app; verhoog beide bij elke release (F-Droid leest deze regels)
+        versionCode 100
+        versionName "1.0.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -17,20 +17,23 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // Ondertekenen: eigen sleutel via omgevingsvariabelen (GitHub Secrets), anders de
+    // meegeleverde test-sleutel (zie android-app/README.md). Ontbreken beide (zoals bij
+    // F-Droid, dat zelf ondertekent), dan wordt een niet-ondertekende APK gebouwd.
+    def faKeystore = file(System.getenv('FA_KEYSTORE_FILE') ?: '../../sideload.keystore')
     signingConfigs {
         release {
-            // Eigen sleutel via omgevingsvariabelen (GitHub Secrets); anders de meegeleverde
-            // test-sleutel (zie android-app/README.md: alleen voor zelf installeren).
-            def ks = System.getenv('FA_KEYSTORE_FILE')
-            storeFile file(ks ?: '../../sideload.keystore')
-            storePassword System.getenv('FA_KEYSTORE_PASSWORD') ?: 'facamera'
-            keyAlias System.getenv('FA_KEY_ALIAS') ?: 'facamera'
-            keyPassword System.getenv('FA_KEY_PASSWORD') ?: 'facamera'
+            if (faKeystore.exists()) {
+                storeFile faKeystore
+                storePassword System.getenv('FA_KEYSTORE_PASSWORD') ?: 'facamera'
+                keyAlias System.getenv('FA_KEY_ALIAS') ?: 'facamera'
+                keyPassword System.getenv('FA_KEY_PASSWORD') ?: 'facamera'
+            }
         }
     }
     buildTypes {
         release {
-            signingConfig signingConfigs.release
+            if (faKeystore.exists()) signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
@@ -53,6 +56,12 @@ dependencies {
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
     implementation project(':capacitor-cordova-android-plugins')
+}
+
+// GitHub Actions: elke testbuild een hoger nummer, zodat hij over de vorige heen installeert
+if (project.hasProperty('ciBuildNumber')) {
+    android.defaultConfig.versionCode = 100 + (project.ciBuildNumber as Integer)
+    android.defaultConfig.versionName = android.defaultConfig.versionName + '-ci.' + project.ciBuildNumber
 }
 
 apply from: 'capacitor.build.gradle'

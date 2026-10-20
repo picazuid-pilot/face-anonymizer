@@ -1,0 +1,1 @@
+First version: photos and videos with hidden faces (logo, blur, pixels, black), protective blur, saving to the gallery and sharing.
