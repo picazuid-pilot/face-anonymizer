@@ -1,0 +1,16 @@
+{
+  "name": "face-anonymizer-camera-android",
+  "private": true,
+  "description": "Android-app (APK) van Face Anonymizer Camera, gebouwd met Capacitor rond camera/",
+  "scripts": {
+    "www": "bash build-www.sh",
+    "sync": "bash build-www.sh && npx cap sync android"
+  },
+  "dependencies": {
+    "@capacitor/android": "7.6.9",
+    "@capacitor/core": "7.6.9"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "7.6.9"
+  }
+}

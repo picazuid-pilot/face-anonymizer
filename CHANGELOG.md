@@ -1,5 +1,10 @@
 # Changelog
 
+## 4.2.0 – Android-app
+- **FA Camera als Android-app (APK)** in `android-app/`, gebouwd met Capacitor rond de camera-app
+- Bewaart direct in de galerij (map *FA Camera*), deelt via het Android-deelmenu, houdt het scherm aan, terugknop sluit eerst panelen
+- GitHub Actions bouwt de APK bij elke wijziging en zet hem op de Releases-pagina
+
 ## 4.1.0 – Face Anonymizer Camera
 - **Nieuwe app voor Android en iPhone** (`camera/`): filmen en fotograferen met gezichten al afgedekt, als web-app op je beginscherm te zetten en offline te gebruiken
 - Opname vanaf het bewerkte beeld; heel beeld vervaagd zolang de herkenning niet klaar is

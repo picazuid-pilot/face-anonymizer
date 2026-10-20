@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">FA Camera</string>
+    <string name="title_activity_main">FA Camera</string>
+    <string name="package_name">io.github.picazuidpilot.facecamera</string>
+    <string name="custom_url_scheme">io.github.picazuidpilot.facecamera</string>
+</resources>

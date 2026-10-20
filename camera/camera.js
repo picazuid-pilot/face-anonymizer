@@ -70,6 +70,9 @@
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  // In de Android-app (Capacitor) bewaren en delen we via de app zelf
+  const cap = window.Capacitor;
+  const native = !!(cap && cap.isNativePlatform && cap.isNativePlatform() && cap.nativePromise);
 
   // --------------------------------------------------------------- meldingen
   let toastTimer = null;
@@ -489,10 +492,13 @@
     }
     $('result-info').textContent = `${info} · ${(blob.size / 1048576).toFixed(1)} MB`;
 
-    const canShare = !!(navigator.canShare && navigator.canShare({ files: [file] }));
+    const canShare = native || !!(navigator.canShare && navigator.canShare({ files: [file] }));
     $('share-btn').hidden = !canShare;
     const saveBtn = $('save-btn');
-    if (isIOS && canShare) {
+    if (native) {
+      saveBtn.textContent = 'Bewaren';
+      $('save-hint').textContent = `Komt in je galerij, map "FA Camera".`;
+    } else if (isIOS && canShare) {
       saveBtn.textContent = 'Bewaar in Foto\'s';
       $('save-hint').textContent = `Kies in het menu "${kind === 'photo' ? 'Bewaar afbeelding' : 'Bewaar video'}".`;
     } else {
@@ -512,8 +518,56 @@
     $('result').hidden = true;
   }
 
+  /** Android-app: in stukjes naar de galerij schrijven (grote video's passen niet in één keer). */
+  async function saveNative(r) {
+    if (r.uri) return r.uri;
+    const CHUNK = 768 * 1024; // deelbaar door 3: base64 per stuk blijft los te decoderen
+    const { id } = await cap.nativePromise('MediaSaver', 'begin', { name: r.name, mime: r.blob.type || 'application/octet-stream' });
+    try {
+      for (let pos = 0; pos < r.blob.size; pos += CHUNK) {
+        const data = await new Promise((res, rej) => {
+          const fr = new FileReader();
+          fr.onload = () => res(String(fr.result).split(',')[1] || '');
+          fr.onerror = () => rej(fr.error);
+          fr.readAsDataURL(r.blob.slice(pos, pos + CHUNK));
+        });
+        await cap.nativePromise('MediaSaver', 'append', { id, data });
+      }
+      const { uri } = await cap.nativePromise('MediaSaver', 'finish', { id });
+      r.uri = uri;
+      return uri;
+    } catch (e) {
+      cap.nativePromise('MediaSaver', 'cancel', { id }).catch(() => {});
+      throw e;
+    }
+  }
+
+  let saving = false;
+  async function nativeAction(andShare) {
+    if (!result || saving) return;
+    saving = true;
+    const r = result;
+    $('save-btn').disabled = $('share-btn').disabled = true;
+    try {
+      const uri = await saveNative(r);
+      if (andShare) {
+        await cap.nativePromise('MediaSaver', 'share', { uri, mime: r.blob.type });
+        toast('Ook bewaard in je galerij (map FA Camera).');
+      } else {
+        toast('Bewaard in je galerij (map FA Camera).');
+      }
+      closeResult();
+    } catch (e) {
+      toast(`Bewaren mislukt (${(e && e.message) || e}).`, 6000);
+    } finally {
+      saving = false;
+      $('save-btn').disabled = $('share-btn').disabled = false;
+    }
+  }
+
   async function share() {
     if (!result) return;
+    if (native) { nativeAction(true); return; }
     try {
       await navigator.share({ files: [result.file] });
       closeResult();
@@ -697,7 +751,8 @@
       await loadOverlay();
     });
     $('save-btn').addEventListener('click', () => {
-      if (isIOS && !$('share-btn').hidden) share(); else download();
+      if (native) nativeAction(false);
+      else if (isIOS && !$('share-btn').hidden) share(); else download();
     });
     $('share-btn').addEventListener('click', share);
     $('discard-btn').addEventListener('click', discard);
@@ -752,7 +807,8 @@
   }
 
   function introHints() {
-    if (standalone) return;
+    if (native) $('pwa-tip').hidden = true;
+    if (standalone || native) return;
     const hint = $('install-hint');
     if (isIOS) {
       hint.textContent = 'Tip: tik in Safari op Delen en kies "Zet op beginscherm". Dan opent hij als app en werkt hij ook zonder internet.';
@@ -766,7 +822,14 @@
   introHints();
   startWorker();
   loadOverlay();
-  if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  // Android-terugknop: eerst panelen sluiten of de opname stoppen
+  window.__faBack = () => {
+    if (!$('settings').hidden) { $('settings').hidden = true; return true; }
+    if (!$('result').hidden) { toast('Kies eerst Bewaren of Weggooien.'); return true; }
+    if (recorder) { stopRecording(); return true; }
+    return false;
+  };
+  if (!native && 'serviceWorker' in navigator && location.protocol === 'https:') {
     navigator.serviceWorker.register('sw.js').catch(() => { /* offline werkt dan niet, de app wel */ });
   }
   // Test- en ontwikkelhaak (geen invloed op gebruik)

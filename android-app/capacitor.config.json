@@ -1,0 +1,10 @@
+{
+  "appId": "io.github.picazuidpilot.facecamera",
+  "appName": "FA Camera",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false,
+    "captureInput": false,
+    "webContentsDebuggingEnabled": false
+  }
+}

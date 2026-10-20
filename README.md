@@ -29,7 +29,7 @@ https://github.com/user-attachments/assets/024daca7-4c85-42a7-befd-ff649e81f6b3
 | Een map vol foto's anonimiseren op je eigen computer | **[Foto Anonymizer](#-foto-anonymizer)** (desktop-app) |
 | Foto's anonimiseren zonder iets te installeren | **[Foto Anonymizer webtool](#webtool)** |
 | Opgeslagen video's, beeldreeksen (genummerde beelden) of losse foto's anonimiseren | **[Face Anonymizer for AV](#-face-anonymizer-for-av)** (desktop-app) |
-| Met je telefoon filmen of fotograferen, met gezichten al afgedekt | **[Face Anonymizer Camera](#-face-anonymizer-camera-telefoon)** (Android en iPhone, via de browser) |
+| Met je telefoon filmen of fotograferen, met gezichten al afgedekt | **[Face Anonymizer Camera](#-face-anonymizer-camera-telefoon)** (Android en iPhone via de browser, of als [Android-app](android-app/)) |
 
 Alle tools gebruiken hetzelfde gezichtsmodel en werken volledig lokaal: er gaan geen beelden of video's naar een server.
 
@@ -261,7 +261,11 @@ Wat hij doet:
 - Nodig: iPhone met iOS 16.4 of nieuwer, of Android met een recente Chrome. Op oudere toestellen blijft het hele beeld vervaagd met de melding *Gezichtsherkenning werkt niet*.
 - De eerste keer wordt ongeveer 15 MB geladen (het gezichtsmodel); daarna staat alles op je telefoon.
 - Getest in Chrome met een nagebootste camera op telefoonformaat. Op echte telefoons (vooral iPhone) is hij nog niet getest: laat het weten als iets niet werkt.
-- Een versie voor de Play Store en App Store is mogelijk door deze app in te pakken (bijv. met Capacitor). Dat is pas nodig als je hem in de winkels wilt hebben; de functie is hetzelfde.
+- Een versie voor de App Store is mogelijk door deze app in te pakken (bijv. met Capacitor), maar vraagt een Mac en een Apple-ontwikkelaarsaccount.
+
+### Android-app (APK)
+
+Liever een echte app? Installeer **[fa-camera.apk](https://github.com/picazuid-pilot/face-anonymizer/releases/download/android/fa-camera.apk)** (Android 10 of nieuwer). Foto's en video's komen dan direct in je galerij, in de map *FA Camera*. GitHub bouwt de APK automatisch bij elke wijziging. Uitleg over installeren, bijwerken en ondertekenen: [android-app/README.md](android-app/README.md).
 
 ## Browserextensie (Chrome/Edge)
 
