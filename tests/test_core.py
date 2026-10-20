@@ -109,6 +109,23 @@ def test_mirror_overlay():
     assert np.abs(a.astype(int) - b[:, ::-1].astype(int)).mean() < 2  # en precies gespiegeld
 
 
+def test_protective_blur():
+    rng = np.random.default_rng(1)
+    frame = rng.integers(0, 255, (480, 640, 3), np.uint8)
+    w = make_worker()
+    w.show_debug = False
+    w.detect_faces = lambda f: []
+    out, _, _ = w.process_frame(frame.copy(), 1)
+    assert np.array_equal(out, frame)          # standaard uit: beeld blijft zoals het is
+    w.protective_blur = True
+    out, _, _ = w.process_frame(frame.copy(), 2)
+    assert out.std() < frame.std() * 0.2       # aan, geen gezicht: alles vervaagd
+    w.faces = [face(last_seen=3)]
+    w.detect_faces = lambda f: [(100, 100, 80, 80, 0.9)]
+    out, _, _ = w.process_frame(frame.copy(), 3)
+    assert np.array_equal(out[400:, 400:], frame[400:, 400:])  # wel een gezicht: rest blijft scherp
+
+
 def test_toggle_pause():
     w = fa.AnonymizerWorker()
     assert w.toggle_pause() is True and w.toggle_pause() is False

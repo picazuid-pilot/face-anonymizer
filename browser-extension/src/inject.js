@@ -272,9 +272,22 @@
       if (!healthy && settings.failSafeBlur) {
         this.failSafe(w, h);
       } else {
-        for (const [x, y, size] of this.tracker.masks(performance.now())) this.mask(x, y, size);
+        const masks = this.tracker.masks(performance.now());
+        if (settings.protectiveBlur && masks.length === 0) this.protect(w, h); // misschien een gemist gezicht
+        else for (const [x, y, size] of masks) this.mask(x, y, size);
       }
       return new VideoFrame(this.canvas, { timestamp: frame.timestamp, duration: frame.duration ?? undefined });
+    }
+
+    /** Beschermende blur: heel beeld sterk verkleinen en weer vergroten, zonder tekst. */
+    protect(w, h) {
+      const sw = 24, sh = Math.max(1, Math.round(24 * h / w));
+      this.small.width = sw; this.small.height = sh;
+      this.sctx.drawImage(this.canvas, 0, 0, sw, sh);
+      this.ctx.save();
+      this.ctx.imageSmoothingQuality = 'high';
+      this.ctx.drawImage(this.small, 0, 0, sw, sh, 0, 0, w, h);
+      this.ctx.restore();
     }
 
     failSafe(w, h) {

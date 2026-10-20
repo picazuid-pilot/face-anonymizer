@@ -104,6 +104,7 @@ Standaard wordt `assets/overlay.png` als overlay geladen. Met **📁 Select PNG*
 | Detect at | Detecteren op lagere resolutie | `960` of `1280` geeft veel meer FPS bij 1080p; `Full` vindt kleine gezichten verder weg beter |
 | Mode | Overlay / Pixelate / Blur / Black | Zonder geladen overlay wordt automatisch gepixeld |
 | Mirror overlay | Spiegelt het logo | Zoom, Meet en Teams spiegelen alleen je **eigen** voorbeeld; de anderen zien het logo gewoon goed. Zet dit alleen aan als je ook gespiegeld uitzendt |
+| Protective blur | Vervaagt het hele beeld zolang er geen gezicht gevonden wordt (voor het geval er een gemist wordt) | Standaard uit, want bij een leeg podium of een pauze wordt het beeld dan vaag. Ook in de browserextensie (*Beschermende blur*) |
 
 **Waarom hoge confidence + lage persistence zo goed werkt:** bij lage confidence ontstaan af en toe valse detecties (een lamp, een poster), en met hoge persistence blijven die maskers lang hangen. *Smart persistence* lost precies dat op: losse valse detecties verdwijnen snel, terwijl echte gezichten die al een tijd gevolgd worden wél lang afgedekt blijven. Je kunt de persistence daardoor weer wat hoger zetten (bijv. 20–30) zonder rommel, wat veiliger is als iemand even wegdraait. Een kwijtgeraakt gezicht krijgt bovendien een masker dat langzaam groeit, zodat het nog bedekt is als de persoon beweegt.
 

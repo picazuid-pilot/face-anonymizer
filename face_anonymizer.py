@@ -76,6 +76,14 @@ def repair_v4l2loopback():
     return False, f"Could not load v4l2loopback: {out or 'unknown error'}"
 
 
+def protect_blur(frame, cells=24):
+    """Heel beeld onherkenbaar maken (in place): sterk verkleinen en weer vergroten."""
+    h, w = frame.shape[:2]
+    small = cv2.resize(frame, (cells, max(1, round(cells * h / w))), interpolation=cv2.INTER_AREA)
+    frame[:] = cv2.resize(small, (w, h), interpolation=cv2.INTER_LINEAR)
+    return frame
+
+
 try:
     import pyvirtualcam
     VIRTUAL_CAM_AVAILABLE = True
@@ -123,6 +131,7 @@ class AnonymizerWorker:
         self.max_faces = 30
         self.mode = "Overlay"
         self.mirror_overlay = False
+        self.protective_blur = False  # heel beeld vaag zolang er geen gezicht gevolgd wordt
         self.detect_width = 0
         self.show_debug = True
         self.force_1080p = True
@@ -182,6 +191,7 @@ class AnonymizerWorker:
                           ('min_face_size', 'min_face_size'), ('persistence', 'persistence_frames'),
                           ('smart_persistence', 'smart_persistence'), ('max_faces', 'max_faces'),
                           ('mode', 'mode'), ('mirror_overlay', 'mirror_overlay'), ('detect_width', 'detect_width'),
+                          ('protective_blur', 'protective_blur'),
                           ('show_debug', 'show_debug'), ('force_1080p', 'force_1080p'),
                           ('enable_virtual_cam', 'enable_virtual_cam')]:
             if key in params:
@@ -407,6 +417,8 @@ class AnonymizerWorker:
         self.frame_count = frame_num
         detections = self.detect_faces(frame)
         self.update_faces(detections, frame_num)
+        if self.protective_blur and not self.faces:
+            protect_blur(frame)  # geen gezicht gevonden: misschien wel een gemist
         for face in sorted(self.faces, key=lambda f: f['w'] * f['h']):
             self.anonymize_face(frame, face)
         preview = frame
@@ -590,6 +602,7 @@ class ControlsWindow:
         self.overlay_status = tk.Label(row, text="", bg=self.BG, fg='#ff8888')
         self.overlay_status.pack(side=tk.LEFT, padx=10)
         self.mirror_var = self._check(anon, "Mirror overlay (only if you also stream mirrored)", False)
+        self.protect_var = self._check(anon, "Protective blur: blur everything while no face is found", False)
         self.scale_slider = self._slider(anon, "Scale:", 10, 35, 18, lambda v: f"{v / 10:.1f}x")
 
         # Detection
@@ -691,6 +704,7 @@ class ControlsWindow:
             'max_faces': max_faces,
             'mode': self.mode_combo.get(),
             'mirror_overlay': self.mirror_var.get(),
+            'protective_blur': self.protect_var.get(),
             'detect_width': DETECT_WIDTHS[self.detw_combo.get()],
             'show_debug': self.debug_var.get(),
             'force_1080p': self.res_var.get(),

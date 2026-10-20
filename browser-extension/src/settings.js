@@ -11,4 +11,5 @@ const FA_DEFAULTS = {
   failSafeBlur: true,       // heel beeld vervagen zolang de detector niet klaar is
   detectSize: 480,          // lange zijde van het detectiebeeld: 320 snel, 480 normaal, 640 nauwkeurig
   mirrorOverlay: false,     // overlay spiegelen (alleen nuttig voor je eigen gespiegelde voorbeeld)
+  protectiveBlur: false,    // heel beeld vaag zolang er geen gezicht gevonden wordt
 };

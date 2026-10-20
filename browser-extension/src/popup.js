@@ -59,7 +59,7 @@
   }
 
   // Vinkjes
-  for (const key of ['smartPersistence', 'failSafeBlur', 'mirrorOverlay']) {
+  for (const key of ['smartPersistence', 'failSafeBlur', 'mirrorOverlay', 'protectiveBlur']) {
     $(key).checked = s[key];
     $(key).addEventListener('change', (e) => save({ [key]: e.target.checked }));
   }

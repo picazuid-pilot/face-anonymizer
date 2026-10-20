@@ -1,5 +1,8 @@
 # Changelog
 
+## 4.4.0
+- **Beschermende blur** ook in de live Face Anonymizer (*Protective blur*) en de browserextensie 1.2.0 (*Beschermende blur*): heel beeld vaag zolang er geen gezicht gevonden wordt. Daar standaard uit
+
 ## 4.3.0
 - Camera-app (web en Android): **beschermende blur**, met het schildje bovenin aan en uit te zetten. Wordt er geen gezicht gevonden, dan wordt het hele beeld vervaagd (ook in foto's en opnames); uitzetten voor beelden zonder mensen
 
