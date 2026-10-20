@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <!-- Niets mag deze pagina verlaten: alleen eigen bestanden, geen externe verbindingen -->
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; img-src 'self' blob: data:; media-src 'self' blob: mediastream:; connect-src 'self' blob: data:; style-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta name="referrer" content="no-referrer">
+  <title>Face Anonymizer Camera</title>
+  <meta name="description" content="Film en fotografeer met gezichten al afgedekt door een logo, blur, pixels of een zwart vlak. Alles gebeurt op je telefoon.">
+  <meta name="theme-color" content="#000000">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="FA Camera">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="camera.css">
+</head>
+<body>
+  <main class="stage">
+    <canvas id="view" aria-label="Camerabeeld met afgedekte gezichten"></canvas>
+    <video id="cam" playsinline muted autoplay hidden></video>
+    <div class="flash" id="flash"></div>
+
+    <header class="topbar">
+      <button class="icon-btn" id="settings-btn" aria-label="Instellingen">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.48.48 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.48.48 0 0 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61zM12 15.6a3.6 3.6 0 1 1 0-7.2 3.6 3.6 0 0 1 0 7.2z"/></svg>
+      </button>
+      <div class="status" id="status" role="status" aria-live="polite">
+        <span class="dot"></span><span id="status-text">Laden…</span>
+      </div>
+      <button class="icon-btn" id="audio-btn" aria-label="Geluid opnemen aan of uit" aria-pressed="true">
+        <svg viewBox="0 0 24 24" aria-hidden="true" class="mic-on"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V21h2v-3.1A7 7 0 0 0 19 11z"/></svg>
+        <svg viewBox="0 0 24 24" aria-hidden="true" class="mic-off"><path d="M19 11h-2a5 5 0 0 1-.6 2.4l1.5 1.5A7 7 0 0 0 19 11zM15 11V5a3 3 0 0 0-5.9-.8L15 10.1zM4.3 3 3 4.3l6 6V11a3 3 0 0 0 4.2 2.7l1.5 1.5A5 5 0 0 1 7 11H5a7 7 0 0 0 6 6.9V21h2v-3.1a7 7 0 0 0 3.1-1.2l3.6 3.6 1.3-1.3z"/></svg>
+      </button>
+    </header>
+
+    <footer class="controls">
+      <div class="chips" role="radiogroup" aria-label="Afdekking">
+        <button role="radio" data-mode="overlay">Logo</button>
+        <button role="radio" data-mode="blur">Blur</button>
+        <button role="radio" data-mode="pixelate">Pixels</button>
+        <button role="radio" data-mode="black">Zwart</button>
+      </div>
+      <div class="capture-kind" role="radiogroup" aria-label="Foto of video">
+        <button role="radio" data-kind="photo">Foto</button>
+        <button role="radio" data-kind="video">Video</button>
+      </div>
+      <div class="shutter-row">
+        <span class="spacer"></span>
+        <button class="shutter" id="shutter" aria-label="Foto maken"><span></span></button>
+        <button class="icon-btn big" id="flip-btn" aria-label="Andere camera">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 8l-4 4h3a6 6 0 0 1-8.8 5.3l-1.46 1.46A8 8 0 0 0 20 12h3zM6 12a6 6 0 0 1 8.8-5.3l1.46-1.46A8 8 0 0 0 4 12H1l4 4 4-4z"/></svg>
+        </button>
+      </div>
+    </footer>
+  </main>
+
+  <!-- Startscherm: camera pas na een tik, zodat telefoons de toestemming netjes vragen -->
+  <section class="intro" id="intro">
+    <img src="icons/icon-192.png" alt="" width="96" height="96">
+    <h1>Face Anonymizer Camera</h1>
+    <p>Film en fotografeer met gezichten <strong>al afgedekt</strong>. Wat je ziet, wordt opgeslagen: het onbewerkte beeld wordt nergens bewaard.</p>
+    <p class="small">Alles gebeurt op dit toestel. Er gaat niets naar internet.</p>
+    <button class="primary" id="start-btn">Camera starten</button>
+    <p class="error" id="start-error" hidden></p>
+    <p class="small install-hint" id="install-hint" hidden></p>
+  </section>
+
+  <!-- Instellingen -->
+  <section class="sheet" id="settings" aria-label="Instellingen" hidden>
+    <div class="sheet-body">
+      <div class="sheet-head">
+        <h2>Instellingen</h2>
+        <button class="icon-btn" data-close aria-label="Sluiten">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 6.4 17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12z"/></svg>
+        </button>
+      </div>
+
+      <div class="field">
+        <span class="label">Logo</span>
+        <div class="logo-row">
+          <img id="logo-preview" alt="Huidig logo" width="56" height="56">
+          <label class="btn">Eigen PNG kiezen<input type="file" id="logo-file" accept="image/png,image/webp" hidden></label>
+          <button class="btn ghost" id="logo-reset">Standaard</button>
+        </div>
+      </div>
+      <label class="switch"><input type="checkbox" id="mirror"><span>Logo spiegelen</span></label>
+
+      <label class="field">
+        <span class="label">Maskergrootte <output id="scale-out"></output></span>
+        <input type="range" id="scale" min="1.2" max="2.6" step="0.1">
+        <span class="hint">Groter dekt ook haar en oren af</span>
+      </label>
+      <label class="field">
+        <span class="label">Zekerheid <output id="conf-out"></output></span>
+        <input type="range" id="confidence" min="0.4" max="0.9" step="0.05">
+        <span class="hint">Lager vindt meer gezichten, maar geeft soms een vlek op de achtergrond</span>
+      </label>
+      <div class="field">
+        <span class="label">Herkenning</span>
+        <div class="seg" role="radiogroup" aria-label="Herkenning">
+          <button role="radio" data-detect="320">Snel</button>
+          <button role="radio" data-detect="480">Normaal</button>
+          <button role="radio" data-detect="640">Nauwkeurig</button>
+        </div>
+        <span class="hint">Nauwkeurig vindt gezichten verder weg, maar volgt snelle bewegingen minder goed op oudere telefoons</span>
+      </div>
+      <label class="field">
+        <span class="label">Videokwaliteit</span>
+        <select id="resolution">
+          <option value="720">720p (kleinere bestanden)</option>
+          <option value="1080">1080p</option>
+        </select>
+      </label>
+      <p class="hint stats" id="stats"></p>
+      <p class="hint">Tip: zet de app op je beginscherm (Delen → Zet op beginscherm, of ⋮ → App installeren). Dan werkt hij ook zonder internet.</p>
+    </div>
+  </section>
+
+  <!-- Resultaat -->
+  <section class="sheet result" id="result" aria-label="Resultaat" hidden>
+    <div class="sheet-body">
+      <div class="media" id="result-media"></div>
+      <p class="hint" id="result-info"></p>
+      <div class="actions">
+        <button class="btn ghost" id="discard-btn">Weggooien</button>
+        <button class="btn" id="share-btn">Delen…</button>
+        <button class="btn primary" id="save-btn">Bewaren</button>
+      </div>
+      <p class="hint" id="save-hint"></p>
+    </div>
+  </section>
+
+  <div class="toast" id="toast" role="alert" hidden></div>
+
+  <script src="../lib/yunet.js"></script>
+  <script src="tracker.js"></script>
+  <script src="camera.js"></script>
+</body>
+</html>

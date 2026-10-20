@@ -1,5 +1,12 @@
 # Changelog
 
+## 4.1.0 – Face Anonymizer Camera
+- **Nieuwe app voor Android en iPhone** (`camera/`): filmen en fotograferen met gezichten al afgedekt, als web-app op je beginscherm te zetten en offline te gebruiken
+- Opname vanaf het bewerkte beeld; heel beeld vervaagd zolang de herkenning niet klaar is
+- Foto's worden bij het maken extra grondig doorzocht
+- Bewaren in Foto's (iPhone) of Downloads (Android), of delen
+- Webtool linkt naar de camera-app; GitHub Pages publiceert beide
+
 ## 4.0.1
 - Live-app: is de virtuele-cameradriver niet geladen, dan laadt de app hem zelf (met wachtwoordvenster) en probeert het opnieuw. Lukt het niet, dan zegt de statusregel waarom: driver niet geïnstalleerd, Secure Boot, geannuleerd of in gebruik
 - README: *Problemen oplossen: virtuele camera*

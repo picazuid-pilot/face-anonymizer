@@ -29,6 +29,7 @@ https://github.com/user-attachments/assets/024daca7-4c85-42a7-befd-ff649e81f6b3
 | Een map vol foto's anonimiseren op je eigen computer | **[Foto Anonymizer](#-foto-anonymizer)** (desktop-app) |
 | Foto's anonimiseren zonder iets te installeren | **[Foto Anonymizer webtool](#webtool)** |
 | Opgeslagen video's, beeldreeksen (genummerde beelden) of losse foto's anonimiseren | **[Face Anonymizer for AV](#-face-anonymizer-for-av)** (desktop-app) |
+| Met je telefoon filmen of fotograferen, met gezichten al afgedekt | **[Face Anonymizer Camera](#-face-anonymizer-camera-telefoon)** (Android en iPhone, via de browser) |
 
 Alle tools gebruiken hetzelfde gezichtsmodel en werken volledig lokaal: er gaan geen beelden of video's naar een server.
 
@@ -168,8 +169,8 @@ python photo_anonymizer.py --help
 
 Dezelfde functie in de browser, zonder installatie: sleep foto's of een hele map op de pagina, loop ze na en download alles als ZIP. **De foto's worden niet geüpload**: alles gebeurt in je eigen browser, en de pagina mag technisch gezien geen verbinding maken met andere websites. Getest in Chrome (dus ook Edge), op de computer en op telefoonformaat; Firefox en Safari zijn nog niet getest.
 
-- **Online**: https://picazuid-pilot.github.io/face-anonymizer/ (wordt bij elke wijziging automatisch bijgewerkt via GitHub Pages)
-- **Op je eigen website** (bijv. InfinityFree): voer `web/build.sh` uit en zet de inhoud van `dist/web` in een map op je hosting. Er is geen PHP of database nodig. Na `install.sh` staat de gebouwde versie ook al klaar in `~/.local/share/face-anonymizer/web`.
+- **Online**: https://picazuid-pilot.github.io/face-anonymizer/ (de camera-app staat op `/camera/`; wordt bij elke wijziging automatisch bijgewerkt via GitHub Pages)
+- **Op je eigen website** (bijv. InfinityFree): voer `web/build.sh` uit en zet de inhoud van `dist/web` in een map op je hosting. Er is geen PHP of database nodig. Voor de camera-app moet de site via **https** bereikbaar zijn (telefoons geven anders geen toegang tot de camera). Na `install.sh` staat de gebouwde versie ook al klaar in `~/.local/share/face-anonymizer/web`.
 
 iPhone-foto's (HEIC) kan de browser niet openen; gebruik daarvoor de desktop-app.
 
@@ -235,6 +236,32 @@ python av_anonymizer.py --help
 **Goed om te weten:**
 - Beeldreeksen worden als 8-bit opgeslagen; 16-bit PNG/TIFF uit compositing-software verliest dus kleurdiepte.
 - Een gezicht dat lang én snel uit beeld beweegt (meer dan ~1 seconde niet te zien terwijl het van richting verandert) kan het opvullen niet precies volgen. Die stukken staan oranje bij het nalopen.
+
+## 📱 Face Anonymizer Camera (telefoon)
+
+Film en fotografeer op je **Android-telefoon of iPhone** met gezichten **al afgedekt** door het logo, blur, pixels of een zwart vlak. Zo hoef je achteraf niets meer na te bewerken.
+
+**Openen:** https://picazuid-pilot.github.io/face-anonymizer/camera/ en tik op *Camera starten*. Zet hem daarna op je beginscherm, dan opent hij als gewone app en werkt hij ook zonder internet:
+- **iPhone (Safari):** Delen → *Zet op beginscherm*
+- **Android (Chrome):** ⋮ → *App installeren* (of de knop *Als app installeren* op het startscherm)
+
+Wat hij doet:
+- **Wat je ziet, wordt opgeslagen.** Video's worden opgenomen vanaf het bewerkte beeld, nooit vanaf de camera zelf. Het onbewerkte beeld wordt nergens bewaard.
+- **Bij twijfel dicht:** zolang de gezichtsherkenning nog laadt of hapert, wordt het hele beeld vervaagd, ook in de opname.
+- **Foto's** worden bij het maken nog een keer grondig doorzocht, zodat ook kleinere gezichten verderop afgedekt worden.
+- Gezichten worden gevolgd tussen twee herkenningen door; het masker beweegt mee en groeit bij snelle bewegingen.
+- Voor- en achtercamera, geluid aan of uit, eigen PNG-logo, logo spiegelen, maskergrootte, zekerheid en snelheid van de herkenning.
+- **Bewaren:** op de iPhone via *Bewaar in Foto's*, op Android in *Downloads* (ook zichtbaar in Google Foto's onder *Apparaatmappen*). Of *Delen…* naar WhatsApp, Signal, mail enz.
+- Er gaat niets naar internet: de pagina mag technisch gezien geen verbinding maken met andere websites.
+
+**Goed om te weten:**
+- Foto's hebben de resolutie van het videobeeld (1080p of 720p), dus minder pixels dan je gewone camera-app.
+- Een opname staat in het geheugen tot je hem bewaart; na 20 minuten stopt hij vanzelf. Ga je tijdens het filmen naar een andere app, dan wordt de opname netjes afgerond.
+- Android-telefoons met een oudere Chrome slaan video's op als WebM in plaats van MP4.
+- Nodig: iPhone met iOS 16.4 of nieuwer, of Android met een recente Chrome. Op oudere toestellen blijft het hele beeld vervaagd met de melding *Gezichtsherkenning werkt niet*.
+- De eerste keer wordt ongeveer 15 MB geladen (het gezichtsmodel); daarna staat alles op je telefoon.
+- Getest in Chrome met een nagebootste camera op telefoonformaat. Op echte telefoons (vooral iPhone) is hij nog niet getest: laat het weten als iets niet werkt.
+- Een versie voor de Play Store en App Store is mogelijk door deze app in te pakken (bijv. met Capacitor). Dat is pas nodig als je hem in de winkels wilt hebben; de functie is hetzelfde.
 
 ## Browserextensie (Chrome/Edge)
 

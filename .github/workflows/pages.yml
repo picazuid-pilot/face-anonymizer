@@ -1,4 +1,4 @@
-# Zet de Foto Anonymizer-webtool online via GitHub Pages bij elke wijziging op main.
+# Zet de Foto Anonymizer-webtool en de camera-app online via GitHub Pages bij elke wijziging op main.
 name: Webtool publiceren
 
 on:
@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - "web/**"
+      - "camera/**"
       - "browser-extension/lib/**"
       - "browser-extension/models/**"
       - "browser-extension/src/yunet.js"
