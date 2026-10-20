@@ -1,5 +1,8 @@
 # Changelog
 
+## 4.2.1
+- Standaard-overlay in alle tools is nu een neutrale "Your image here"-afbeelding in plaats van het CA-logo; kies je eigen logo in de tool of vervang `assets/overlay.png`
+
 ## 4.2.0 – Android-app
 - **FA Camera als Android-app (APK)** in `android-app/`, gebouwd met Capacitor rond de camera-app
 - Bewaart direct in de galerij (map *FA Camera*), deelt via het Android-deelmenu, houdt het scherm aan, terugknop sluit eerst panelen

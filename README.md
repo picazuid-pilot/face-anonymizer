@@ -284,7 +284,17 @@ In [`browser-extension/`](browser-extension/) staat een extensie (installatie: z
 
 ## Overlay-logo
 
-`assets/overlay.png` is het CA-logo (handelsmerk). Vervang het door je eigen afbeelding als je de tool buiten CA-verband gebruikt.
+`assets/overlay.png` is een neutrale **"Your image here"**-afbeelding. Kies in elke tool je eigen logo:
+
+| Tool | Waar |
+|---|---|
+| Face Anonymizer (live) | **📁 Select PNG** |
+| Foto Anonymizer en Face Anonymizer for AV | **Overlay kiezen…** |
+| Foto Anonymizer-webtool | **Ander logo kiezen** |
+| Camera-app (telefoon en Android-app) | Instellingen → **Eigen PNG kiezen** (wordt onthouden) |
+| Browserextensie | In de popup: **Eigen PNG kiezen…** |
+
+Wil je dat je eigen logo overal de standaard is, vervang dan `assets/overlay.png` door je logo en voer `./install.sh` opnieuw uit. Gebruik een PNG waarvan het deel over het gezicht **volledig dekkend** is; een doorzichtige rand eromheen wordt automatisch weggeknipt.
 
 ## Licentie
 
