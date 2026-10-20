@@ -53,6 +53,12 @@ svg { width: 24px; height: 24px; fill: currentColor; display: block; }
 .icon-btn.big { width: 52px; height: 52px; }
 .icon-btn:active { background: rgba(255,255,255,.2); }
 .icon-btn:disabled { opacity: .35; }
+.top-right { display: flex; gap: 6px; }
+#protect-btn .shield-off { display: none; }
+#protect-btn[aria-pressed="false"] .shield-on { display: none; }
+#protect-btn[aria-pressed="false"] .shield-off { display: block; }
+#protect-btn[aria-pressed="false"] { color: var(--muted); }
+#protect-btn[aria-pressed="true"] { color: var(--ok); }
 #audio-btn .mic-off { display: none; }
 #audio-btn[aria-pressed="false"] .mic-on { display: none; }
 #audio-btn[aria-pressed="false"] .mic-off { display: block; }
@@ -60,9 +66,9 @@ svg { width: 24px; height: 24px; fill: currentColor; display: block; }
 
 .status {
   display: flex; align-items: center; gap: 8px;
-  padding: 7px 14px; border-radius: 999px;
-  background: rgba(0,0,0,.5); font-size: 14px; font-weight: 600;
-  max-width: 60vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  padding: 7px 12px; border-radius: 999px;
+  background: rgba(0,0,0,.5); font-size: 13px; font-weight: 600;
+  max-width: calc(100vw - 180px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .status .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--warn); flex: none; }
 .status.ok .dot { background: var(--ok); }

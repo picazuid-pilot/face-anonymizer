@@ -248,6 +248,7 @@ Film en fotografeer op je **Android-telefoon of iPhone** met gezichten **al afge
 Wat hij doet:
 - **Wat je ziet, wordt opgeslagen.** Video's worden opgenomen vanaf het bewerkte beeld, nooit vanaf de camera zelf. Het onbewerkte beeld wordt nergens bewaard.
 - **Bij twijfel dicht:** zolang de gezichtsherkenning nog laadt of hapert, wordt het hele beeld vervaagd, ook in de opname.
+- **Beschermende blur** (schildje bovenin, standaard aan): zolang er geen gezicht gevonden wordt, wordt het hele beeld vervaagd, voor het geval er een gemist wordt. Een gezicht dat wél gevonden wordt, krijgt gewoon zijn masker en de rest is scherp. Zet het schildje uit voor beelden zonder mensen, zoals een dier of natuur.
 - **Foto's** worden bij het maken nog een keer grondig doorzocht, zodat ook kleinere gezichten verderop afgedekt worden.
 - Gezichten worden gevolgd tussen twee herkenningen door; het masker beweegt mee en groeit bij snelle bewegingen.
 - Voor- en achtercamera, geluid aan of uit, eigen PNG-logo, logo spiegelen, maskergrootte, zekerheid en snelheid van de herkenning.

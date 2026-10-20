@@ -1,5 +1,8 @@
 # Changelog
 
+## 4.3.0
+- Camera-app (web en Android): **beschermende blur**, met het schildje bovenin aan en uit te zetten. Wordt er geen gezicht gevonden, dan wordt het hele beeld vervaagd (ook in foto's en opnames); uitzetten voor beelden zonder mensen
+
 ## 4.2.1
 - Standaard-overlay in alle tools is nu een neutrale "Your image here"-afbeelding in plaats van het CA-logo; kies je eigen logo in de tool of vervang `assets/overlay.png`
 

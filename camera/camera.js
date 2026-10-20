@@ -16,13 +16,14 @@
 
   const DEFAULTS = {
     mode: 'overlay', kind: 'photo', scale: 1.6, confidence: 0.6, detectSize: 480,
-    mirror: false, audio: true, resolution: 1080, facing: 'environment',
+    mirror: false, audio: true, resolution: 1080, facing: 'environment', protect: true,
   };
   const STORE = 'fa-camera-settings';
   const LOGO_STORE = 'fa-camera-logo';
   const PERSISTENCE = 15;          // detecties dat een kwijtgeraakt gezicht afgedekt blijft
   const MIN_SIZE = 10;             // kleinste gezicht in beeldpixels
   const STALE_MS = 1200;           // langer geen detectie = heel beeld vervagen
+  const PROTECT_CELLS = 24;        // beschermende blur: beeld terug naar 24 blokjes breed
   const MAX_RECORD_MS = 20 * 60 * 1000; // opnames staan in het geheugen tot je ze bewaart
 
   // ------------------------------------------------------------ instellingen
@@ -106,7 +107,8 @@
       setStatus('', 'Even geduld…');
     } else {
       const n = lastFaceCount;
-      setStatus('ok', n === 0 ? 'Actief · geen gezichten' : `Actief · ${n} ${n === 1 ? 'gezicht' : 'gezichten'}`);
+      if (n === 0 && S.protect) setStatus('', 'Beschermd · geen gezicht');
+      else setStatus('ok', n === 0 ? 'Actief · geen gezichten' : `Actief · ${n} ${n === 1 ? 'gezicht' : 'gezichten'}`);
     }
     $('stats').textContent = running
       ? `Beeld ${video.videoWidth}×${video.videoHeight} · ${fps.toFixed(0)} fps · herkenning ${detectMs.toFixed(0)} ms`
@@ -222,16 +224,24 @@
     c.restore();
   }
 
-  /** Heel beeld onherkenbaar zolang de herkenning niet (meer) werkt. */
-  function failSafe(c, cv, text) {
+  /** Heel beeld vervagen door het sterk te verkleinen en weer te vergroten (werkt overal, ook op Safari). */
+  function blurAll(c, cv, cells) {
     const W = cv.width, H = cv.height;
-    small.width = 16; small.height = Math.max(1, Math.round(16 * H / W));
+    small.width = cells; small.height = Math.max(1, Math.round(cells * H / W));
     sctx.imageSmoothingEnabled = true;
     sctx.drawImage(cv, 0, 0, small.width, small.height);
     c.save();
     c.imageSmoothingEnabled = true;
     c.imageSmoothingQuality = 'high';
     c.drawImage(small, 0, 0, small.width, small.height, 0, 0, W, H);
+    c.restore();
+  }
+
+  /** Heel beeld onherkenbaar zolang de herkenning niet (meer) werkt. */
+  function failSafe(c, cv, text) {
+    const W = cv.width, H = cv.height;
+    blurAll(c, cv, 16);
+    c.save();
     c.fillStyle = 'rgba(0,0,0,.45)';
     const band = Math.max(48, Math.max(W, H) / 11); // leesbaar, ook staand op een telefoon
     c.fillRect(0, H / 2 - band / 2, W, band);
@@ -268,7 +278,12 @@
     } else {
       const masks = tracker.masks(now, S.scale);
       lastFaceCount = masks.length;
-      for (const [x, y, size] of masks) drawMask(ctx, view, dx + x * k, dy + y * k, size * k);
+      if (S.protect && masks.length === 0) {
+        // Geen gezicht gevonden: misschien wel een gemist. Alles vervagen (zonder tekst, want dit wordt ook opgenomen).
+        blurAll(ctx, view, PROTECT_CELLS);
+      } else {
+        for (const [x, y, size] of masks) drawMask(ctx, view, dx + x * k, dy + y * k, size * k);
+      }
     }
 
     fpsCount++;
@@ -378,14 +393,17 @@
       if (!covered) masks.push([mx - size / 2, my - size / 2, size]);
     }
     masks.sort((a, b) => a[2] - b[2]);
-    for (const [x, y, size] of masks) drawMask(cx, c, x, y, size);
+    const protectedAll = S.protect && masks.length === 0;
+    if (protectedAll) blurAll(cx, c, PROTECT_CELLS);
+    else for (const [x, y, size] of masks) drawMask(cx, c, x, y, size);
 
     const blob = await new Promise((r) => c.toBlob(r, 'image/jpeg', 0.92));
     c.width = c.height = 0; // onbewerkt beeld direct weg
     $('shutter').disabled = false;
     if (!blob) { toast('Foto opslaan mislukt.'); return; }
     const n = masks.length;
-    showResult(blob, 'photo', `${vw}×${vh} · ${n === 0 ? 'geen gezichten gevonden' : n === 1 ? '1 gezicht afgedekt' : `${n} gezichten afgedekt`}`);
+    showResult(blob, 'photo', `${vw}×${vh} · ${protectedAll ? 'geen gezicht gevonden, hele foto vervaagd (beschermende blur; zet het schildje uit voor foto\'s zonder mensen)'
+      : n === 0 ? 'geen gezichten gevonden' : n === 1 ? '1 gezicht afgedekt' : `${n} gezichten afgedekt`}`);
   }
 
   function flash() {
@@ -696,6 +714,8 @@
     $('flip-btn').disabled = !!recorder;
     $('settings-btn').disabled = !!recorder;
     $('audio-btn').setAttribute('aria-pressed', String(S.audio));
+    $('protect-btn').setAttribute('aria-pressed', String(S.protect));
+    $('protect').checked = S.protect;
     $('audio-btn').disabled = !!recorder;
     $('mirror').checked = S.mirror;
     $('scale').value = S.scale;
@@ -729,6 +749,13 @@
       save();
       try { await startCamera(); } catch (e) { toast(cameraError(e), 6000); }
     });
+    const setProtect = (on) => {
+      S.protect = on; save(); syncUI();
+      toast(on ? 'Beschermende blur aan: zonder gevonden gezicht wordt alles vervaagd.'
+        : 'Beschermende blur uit: alleen gevonden gezichten worden afgedekt.', 2600);
+    };
+    $('protect-btn').addEventListener('click', () => setProtect(!S.protect));
+    $('protect').addEventListener('change', (e) => setProtect(e.target.checked));
     $('audio-btn').addEventListener('click', () => {
       if (recorder) return;
       S.audio = !S.audio; save(); syncUI();
