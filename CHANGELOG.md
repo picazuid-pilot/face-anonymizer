@@ -1,5 +1,9 @@
 # Changelog
 
+## 4.5.2
+- Camera-app: kleurcorrectie wordt **per camera** onthouden (bijv. omwisselen voor de achtercamera, automatisch voor de selfiecamera). Een eerder gekozen instelling blijft gelden voor de achtercamera
+- Onderaan de instellingen staat welk beeldformaat de camera levert, handig bij het melden van kleurproblemen
+
 ## 4.5.1
 - Camera-app: **kleurcorrectie** voor telefooncamera's die rood en blauw omgewisseld leveren (alles blauw; gezien met de achtercamera in de Android-app). Wordt automatisch herkend door de ruwe camerapixels te vergelijken met het beeld op het scherm; in de instellingen ook met de hand aan of uit te zetten
 

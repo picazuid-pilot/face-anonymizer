@@ -16,7 +16,8 @@
 
   const DEFAULTS = {
     mode: 'overlay', kind: 'photo', scale: 1.6, confidence: 0.6, detectSize: 480,
-    mirror: false, audio: true, resolution: 1080, facing: 'environment', protect: true, colorFix: 'auto',
+    mirror: false, audio: true, resolution: 1080, facing: 'environment', protect: true,
+    colorFixCam: { environment: 'auto', user: 'auto' }, // kleurcorrectie per camera
   };
   const STORE = 'fa-camera-settings';
   const LOGO_STORE = 'fa-camera-logo';
@@ -29,6 +30,12 @@
   // ------------------------------------------------------------ instellingen
   let S = { ...DEFAULTS };
   try { S = { ...DEFAULTS, ...JSON.parse(localStorage.getItem(STORE) || '{}') }; } catch (_) { /* privévenster */ }
+  // Oude instelling (één waarde voor alle camera's): alleen voor de achtercamera overnemen
+  if (typeof S.colorFix === 'string') {
+    S.colorFixCam = { environment: S.colorFix, user: 'auto' };
+    delete S.colorFix;
+  }
+  S.colorFixCam = { environment: 'auto', user: 'auto', ...(S.colorFixCam || {}) };
   const save = () => { try { localStorage.setItem(STORE, JSON.stringify(S)); } catch (_) { /* geen opslag */ } };
 
   // ---------------------------------------------------------------- elementen
@@ -112,7 +119,7 @@
     }
     $('stats').textContent = running
       ? `Beeld ${video.videoWidth}×${video.videoHeight} · ${fps.toFixed(0)} fps · herkenning ${detectMs.toFixed(0)} ms · kleur ${
-        swapRB() ? 'gecorrigeerd' : S.colorFix === 'auto' && swapAuto === null ? 'wordt gecontroleerd' : 'normaal'}`
+        swapRB() ? 'gecorrigeerd' : colorMode() === 'auto' && swapAuto === null ? 'wordt gecontroleerd' : 'normaal'}${frameFormat ? ` (${frameFormat})` : ''}`
       : '';
   }
 
@@ -191,7 +198,8 @@
   probe.width = 64; probe.height = 36;
   const pctx = probe.getContext('2d', { willReadFrequently: true });
 
-  const swapRB = () => S.colorFix === 'on' || (S.colorFix === 'auto' && swapAuto === true);
+  const colorMode = () => S.colorFixCam[S.facing] || 'auto';
+  const swapRB = () => colorMode() === 'on' || (colorMode() === 'auto' && swapAuto === true);
 
   /** Tekent het camerabeeld, met kleurcorrectie als dat nodig is. */
   function drawVideo(c, x, y, w, h) {
@@ -213,8 +221,10 @@
   }
 
   /** Gemiddelde kleur uit de ruwe pixels van een cameraframe, of null als dat niet kan. */
+  let frameFormat = '';
   async function frameMeanRGB(vf) {
     const fmt = vf.format;
+    frameFormat = fmt || 'onbekend';
     if (!fmt) return null;
     const buf = new Uint8Array(vf.allocationSize());
     const layout = await vf.copyTo(buf);
@@ -256,7 +266,7 @@
   }
 
   async function checkColors() {
-    if (S.colorFix !== 'auto' || swapAuto !== null || !running || !video.videoWidth) return;
+    if (colorMode() !== 'auto' || swapAuto !== null || !running || !video.videoWidth) return;
     if (++colorChecks > 40 || typeof VideoFrame === 'undefined') { swapAuto = swapAuto ?? false; return; }
     let vf;
     try { vf = new VideoFrame(video, { timestamp: 0 }); } catch (_) { return; }
@@ -442,6 +452,7 @@
     await video.play().catch(() => {});
     tracker.reset();
     swapAuto = null; // elke camera opnieuw controleren
+    frameFormat = '';
     colorChecks = 0;
     lastResult = -Infinity; // nieuwe camera: eerst weer een verse detectie
     running = true;
@@ -829,7 +840,8 @@
     $('confidence').value = S.confidence;
     $('conf-out').textContent = Number(S.confidence).toFixed(2);
     $('resolution').value = String(S.resolution);
-    $('colorfix').value = S.colorFix;
+    $('colorfix').value = colorMode();
+    $('colorfix-cam').textContent = S.facing === 'user' ? 'selfiecamera' : 'achtercamera';
   }
 
   function bind() {
@@ -854,6 +866,7 @@
       if (recorder) return;
       S.facing = S.facing === 'user' ? 'environment' : 'user';
       save();
+      syncUI(); // kleurcorrectie van de andere camera tonen en gebruiken
       try { await startCamera(); } catch (e) { toast(cameraError(e), 6000); }
     });
     const setProtect = (on) => {
@@ -880,8 +893,8 @@
       if (running && !recorder) { try { await startCamera(); } catch (err) { toast(cameraError(err), 6000); } }
     });
     $('colorfix').addEventListener('change', (e) => {
-      S.colorFix = e.target.value; save();
-      if (S.colorFix === 'auto') { swapAuto = null; colorChecks = 0; }
+      S.colorFixCam[S.facing] = e.target.value; save();
+      if (e.target.value === 'auto') { swapAuto = null; colorChecks = 0; }
     });
     $('logo-file').addEventListener('change', (e) => { chooseLogo(e.target.files[0]); e.target.value = ''; });
     $('logo-reset').addEventListener('click', async () => {
