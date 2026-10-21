@@ -20,6 +20,12 @@
   <link rel="stylesheet" href="camera.css">
 </head>
 <body>
+  <!-- Kleurcorrectie: rood en blauw omwisselen (sommige telefooncamera's leveren ze verkeerd om) -->
+  <svg class="svg-defs" aria-hidden="true" focusable="false">
+    <filter id="fa-swap-rb" color-interpolation-filters="sRGB">
+      <feColorMatrix type="matrix" values="0 0 1 0 0  0 1 0 0 0  1 0 0 0 0  0 0 0 1 0"/>
+    </filter>
+  </svg>
   <main class="stage">
     <canvas id="view" aria-label="Camerabeeld met afgedekte gezichten"></canvas>
     <video id="cam" playsinline muted autoplay hidden></video>
@@ -120,6 +126,15 @@
         </div>
         <span class="hint">Nauwkeurig vindt gezichten verder weg, maar volgt snelle bewegingen minder goed op oudere telefoons</span>
       </div>
+      <label class="field">
+        <span class="label">Kleurcorrectie</span>
+        <select id="colorfix">
+          <option value="auto">Automatisch</option>
+          <option value="on">Rood en blauw omwisselen</option>
+          <option value="off">Uit</option>
+        </select>
+        <span class="hint">Zie je alles blauw (blauwe huid, oranje wordt blauw)? Sommige telefooncamera's leveren rood en blauw verkeerd om. Automatisch merkt dat meestal zelf; anders kies je hier "omwisselen".</span>
+      </label>
       <label class="field">
         <span class="label">Videokwaliteit</span>
         <select id="resolution">

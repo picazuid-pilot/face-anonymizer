@@ -16,7 +16,7 @@
 
   const DEFAULTS = {
     mode: 'overlay', kind: 'photo', scale: 1.6, confidence: 0.6, detectSize: 480,
-    mirror: false, audio: true, resolution: 1080, facing: 'environment', protect: true,
+    mirror: false, audio: true, resolution: 1080, facing: 'environment', protect: true, colorFix: 'auto',
   };
   const STORE = 'fa-camera-settings';
   const LOGO_STORE = 'fa-camera-logo';
@@ -111,7 +111,8 @@
       else setStatus('ok', n === 0 ? 'Actief · geen gezichten' : `Actief · ${n} ${n === 1 ? 'gezicht' : 'gezichten'}`);
     }
     $('stats').textContent = running
-      ? `Beeld ${video.videoWidth}×${video.videoHeight} · ${fps.toFixed(0)} fps · herkenning ${detectMs.toFixed(0)} ms`
+      ? `Beeld ${video.videoWidth}×${video.videoHeight} · ${fps.toFixed(0)} fps · herkenning ${detectMs.toFixed(0)} ms · kleur ${
+        swapRB() ? 'gecorrigeerd' : S.colorFix === 'auto' && swapAuto === null ? 'wordt gecontroleerd' : 'normaal'}`
       : '';
   }
 
@@ -162,7 +163,7 @@
     if (det.width !== W || det.height !== H) { det.width = W; det.height = H; }
     dctx.fillStyle = '#000';
     dctx.fillRect(0, 0, W, H);
-    dctx.drawImage(video, 0, 0, cw, ch);
+    drawVideo(dctx, 0, 0, cw, ch);
     const buffer = dctx.getImageData(0, 0, W, H).data.buffer;
     const id = ++reqId;
     liveReq = { id, s: scale, t: now };
@@ -178,6 +179,109 @@
       worker.postMessage({ type: 'photo', id, bitmap, minScore: S.confidence }, [bitmap]);
     });
   }
+
+  // ----------------------------------------------------------- kleurcorrectie
+  // Sommige telefooncamera's (gezien in de Android-app, achtercamera) leveren beelden
+  // waarin rood en blauw omgewisseld zijn als ze op een canvas getekend worden.
+  // We vergelijken daarom de echte pixels van een cameraframe (VideoFrame.copyTo)
+  // met wat het canvas ervan maakt, en wisselen zo nodig terug met een SVG-filter.
+  let swapAuto = null;  // null = nog niet bepaald
+  let colorChecks = 0;
+  const probe = document.createElement('canvas');
+  probe.width = 64; probe.height = 36;
+  const pctx = probe.getContext('2d', { willReadFrequently: true });
+
+  const swapRB = () => S.colorFix === 'on' || (S.colorFix === 'auto' && swapAuto === true);
+
+  /** Tekent het camerabeeld, met kleurcorrectie als dat nodig is. */
+  function drawVideo(c, x, y, w, h) {
+    if (swapRB()) {
+      c.save();
+      c.filter = 'url(#fa-swap-rb)';
+      c.drawImage(video, x, y, w, h);
+      c.restore();
+    } else {
+      c.drawImage(video, x, y, w, h);
+    }
+  }
+
+  function meanRGB(data) {
+    let r = 0, g = 0, b = 0;
+    const n = data.length / 4;
+    for (let i = 0; i < data.length; i += 4) { r += data[i]; g += data[i + 1]; b += data[i + 2]; }
+    return { r: r / n, g: g / n, b: b / n };
+  }
+
+  /** Gemiddelde kleur uit de ruwe pixels van een cameraframe, of null als dat niet kan. */
+  async function frameMeanRGB(vf) {
+    const fmt = vf.format;
+    if (!fmt) return null;
+    const buf = new Uint8Array(vf.allocationSize());
+    const layout = await vf.copyTo(buf);
+    const vr = vf.visibleRect || { x: 0, y: 0, width: vf.codedWidth, height: vf.codedHeight };
+    const full = !!(vf.colorSpace && vf.colorSpace.fullRange);
+    let r = 0, g = 0, b = 0, n = 0;
+    for (let sy = 0; sy < 18; sy++) {
+      for (let sx = 0; sx < 32; sx++) {
+        const px = Math.floor(vr.x + (sx + 0.5) * vr.width / 32);
+        const py = Math.floor(vr.y + (sy + 0.5) * vr.height / 18);
+        let R, G, B;
+        if (fmt === 'I420' || fmt === 'I420A' || fmt === 'NV12') {
+          const Y = buf[layout[0].offset + py * layout[0].stride + px];
+          let U, V;
+          const cx = px >> 1, cy = py >> 1;
+          if (fmt === 'NV12') {
+            const o = layout[1].offset + cy * layout[1].stride + cx * 2;
+            U = buf[o]; V = buf[o + 1];
+          } else {
+            U = buf[layout[1].offset + cy * layout[1].stride + cx];
+            V = buf[layout[2].offset + cy * layout[2].stride + cx];
+          }
+          const yy = full ? Y : 1.164 * (Y - 16);
+          const k = full ? 1 : 1.138; // chroma-schaal bij beperkt bereik
+          R = yy + 1.402 * k * (V - 128);
+          G = yy - 0.344 * k * (U - 128) - 0.714 * k * (V - 128);
+          B = yy + 1.772 * k * (U - 128);
+        } else if (fmt === 'RGBA' || fmt === 'RGBX' || fmt === 'BGRA' || fmt === 'BGRX') {
+          const o = layout[0].offset + py * layout[0].stride + px * 4;
+          const bgr = fmt[0] === 'B';
+          R = buf[o + (bgr ? 2 : 0)]; G = buf[o + 1]; B = buf[o + (bgr ? 0 : 2)];
+        } else {
+          return null;
+        }
+        r += R; g += G; b += B; n++;
+      }
+    }
+    return { r: r / n, g: g / n, b: b / n };
+  }
+
+  async function checkColors() {
+    if (S.colorFix !== 'auto' || swapAuto !== null || !running || !video.videoWidth) return;
+    if (++colorChecks > 40 || typeof VideoFrame === 'undefined') { swapAuto = swapAuto ?? false; return; }
+    let vf;
+    try { vf = new VideoFrame(video, { timestamp: 0 }); } catch (_) { return; }
+    try {
+      // Zelfde moment: eerst het canvas laten tekenen, dan de ruwe pixels lezen
+      pctx.drawImage(video, 0, 0, probe.width, probe.height);
+      const shown = meanRGB(pctx.getImageData(0, 0, probe.width, probe.height).data);
+      const truth = await frameMeanRGB(vf);
+      if (!truth) { swapAuto = false; return; }
+      if (Math.abs(truth.r - truth.b) < 12) return; // te grijs om te beoordelen; straks opnieuw
+      const same = Math.abs(shown.r - truth.r) + Math.abs(shown.b - truth.b);
+      const swapped = Math.abs(shown.r - truth.b) + Math.abs(shown.b - truth.r);
+      if (swapped < same * 0.5) {
+        swapAuto = true;
+        toast('Kleuren van deze camera gecorrigeerd: rood en blauw waren omgewisseld.', 4000);
+      } else if (same < swapped * 0.5) {
+        swapAuto = false;
+      }
+    } catch (e) {
+      console.warn('[FA Camera] kleurcontrole', e);
+    } finally {
+      vf.close();
+    }
+  }
+  setInterval(checkColors, 700);
 
   // ----------------------------------------------------------------- maskers
   /** Tekent één masker in een vierkant [x, y, size] op ctx (die van canvas `cv` is). */
@@ -268,7 +372,7 @@
     const k = Math.min(view.width / vw, view.height / vh);
     const dw = vw * k, dh = vh * k, dx = (view.width - dw) / 2, dy = (view.height - dh) / 2;
     if (dx > 0.5 || dy > 0.5) { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, view.width, view.height); }
-    ctx.drawImage(video, dx, dy, dw, dh);
+    drawVideo(ctx, dx, dy, dw, dh);
 
     const now = performance.now();
     maybeDetect(vw, vh, now);
@@ -337,6 +441,8 @@
     video.srcObject = new MediaStream(stream.getVideoTracks());
     await video.play().catch(() => {});
     tracker.reset();
+    swapAuto = null; // elke camera opnieuw controleren
+    colorChecks = 0;
     lastResult = -Infinity; // nieuwe camera: eerst weer een verse detectie
     running = true;
     fpsT0 = performance.now();
@@ -375,7 +481,7 @@
     const c = document.createElement('canvas');
     c.width = vw; c.height = vh;
     const cx = c.getContext('2d');
-    cx.drawImage(video, 0, 0, vw, vh);
+    drawVideo(cx, 0, 0, vw, vh);
     flash();
     $('shutter').disabled = true;
 
@@ -723,6 +829,7 @@
     $('confidence').value = S.confidence;
     $('conf-out').textContent = Number(S.confidence).toFixed(2);
     $('resolution').value = String(S.resolution);
+    $('colorfix').value = S.colorFix;
   }
 
   function bind() {
@@ -771,6 +878,10 @@
     $('resolution').addEventListener('change', async (e) => {
       S.resolution = Number(e.target.value); save();
       if (running && !recorder) { try { await startCamera(); } catch (err) { toast(cameraError(err), 6000); } }
+    });
+    $('colorfix').addEventListener('change', (e) => {
+      S.colorFix = e.target.value; save();
+      if (S.colorFix === 'auto') { swapAuto = null; colorChecks = 0; }
     });
     $('logo-file').addEventListener('change', (e) => { chooseLogo(e.target.files[0]); e.target.value = ''; });
     $('logo-reset').addEventListener('click', async () => {
@@ -860,5 +971,5 @@
     navigator.serviceWorker.register('sw.js').catch(() => { /* offline werkt dan niet, de app wel */ });
   }
   // Test- en ontwikkelhaak (geen invloed op gebruik)
-  window.__faCamera = { get healthy() { return healthy; }, get faces() { return lastFaceCount; }, get fps() { return fps; }, get detectMs() { return detectMs; } };
+  window.__faCamera = { get swapAuto() { return swapAuto; }, get healthy() { return healthy; }, get faces() { return lastFaceCount; }, get fps() { return fps; }, get detectMs() { return detectMs; } };
 })();

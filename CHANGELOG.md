@@ -1,5 +1,8 @@
 # Changelog
 
+## 4.5.1
+- Camera-app: **kleurcorrectie** voor telefooncamera's die rood en blauw omgewisseld leveren (alles blauw; gezien met de achtercamera in de Android-app). Wordt automatisch herkend door de ruwe camerapixels te vergelijken met het beeld op het scherm; in de instellingen ook met de hand aan of uit te zetten
+
 ## 4.5.0 – Licentie en F-Droid
 - **Licentie: GPL-3.0-or-later** (`LICENSE`); onderdelen van derden in `THIRD_PARTY_NOTICES.md`
 - Android-app voorbereid op F-Droid: ONNX Runtime van npm in plaats van uit de repo, vaste versie 1.0.0 (versionCode 100), catalogusgegevens en schermafbeeldingen in `fastlane/`, concept-bouwrecept en stappenplan in `android-app/FDROID.md`

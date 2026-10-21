@@ -29,6 +29,7 @@ button, select, input { font: inherit; color: inherit; }
 button { cursor: pointer; }
 svg { width: 24px; height: 24px; fill: currentColor; display: block; }
 [hidden] { display: none !important; }
+.svg-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
 
 /* ------------------------------------------------------------ camera */
 .stage { position: fixed; inset: 0; }
